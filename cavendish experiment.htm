@@ -1,0 +1,631 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cavendish Experiment - 3D Simulation</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', -apple-system, sans-serif; background: #050508; color: #eee; }
+        
+        #ui-panel {
+            position: absolute; top: 15px; left: 15px; width: 230px;
+            background: rgba(15, 15, 25, 0.95); padding: 12px; border-radius: 10px;
+            border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 4px 20px rgba(0,0,0,0.6);
+            z-index: 100; font-size: 11px;
+        }
+
+        h1 { font-size: 0.9rem; margin: 0 0 10px 0; color: #4af; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid #334; padding-bottom: 5px; }
+        
+        .control-group { margin-bottom: 8px; }
+        label { display: flex; justify-content: space-between; margin-bottom: 2px; color: #aaa; }
+        input[type=range] { width: 100%; height: 4px; cursor: pointer; accent-color: #4af; background: #223; border-radius: 2px; appearance: none; }
+        input[type=range]::-webkit-slider-thumb { appearance: none; width: 10px; height: 10px; background: #4af; border-radius: 50%; }
+        
+        select { width: 100%; background: #223; color: #eee; border: 1px solid #445; border-radius: 4px; padding: 4px; font-size: 10px; cursor: pointer; outline: none; margin-top: 4px; }
+        select:focus { border-color: #4af; }
+
+        .value-display { color: #4af; font-weight: 600; }
+
+        .btn-row { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 10px; }
+        button {
+            flex: 1 1 45%; padding: 6px; background: #223; border: 1px solid #445;
+            color: white; border-radius: 4px; cursor: pointer; font-size: 10px; font-weight: bold; transition: 0.2s;
+        }
+        button:hover { background: #334; border-color: #556; }
+        button.active { background: #4af; color: #000; border-color: #4af; }
+        
+        #stats {
+            position: absolute; top: 15px; right: 15px; text-align: right;
+            background: rgba(0,0,0,0.7); padding: 10px; border-radius: 6px; font-family: 'JetBrains Mono', monospace;
+            pointer-events: none; z-index: 50; border: 1px solid #223; font-size: 13px;
+        }
+        .stat-line { margin: 2px 0; }
+        .highlight { color: #f44; font-weight: bold; }
+
+        .overlay-container {
+            position: absolute; right: 15px; width: 550px; 
+            background: #fff; border: 2px solid #334; border-radius: 8px;
+            display: none; flex-direction: column; z-index: 40; box-shadow: 0 10px 40px rgba(0,0,0,0.9);
+            color: #000; overflow: hidden;
+        }
+
+        #graph-container { bottom: 15px; height: 240px; background: rgba(10, 10, 15, 0.95); color: #eee; border-color: #4af; }
+        #screen-container { bottom: 270px; height: 140px; }
+        #screen-container.bottom-only { bottom: 15px; }
+
+        .container-header { 
+            padding: 8px 12px; font-size: 10px; font-weight: bold; 
+            background: #111; color: #4af; border-bottom: 1px solid #223;
+            display: flex; justify-content: space-between; align-items: center; 
+        }
+        .canvas-el { flex-grow: 1; width: 100%; height: 100%; }
+
+        #instructions {
+            position: absolute; bottom: 15px; left: 15px; font-size: 10px; color: #667;
+            background: rgba(0,0,0,0.4); padding: 8px; border-radius: 4px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+
+<div id="ui-panel">
+    <h1>Cavendish Setup</h1>
+    
+    <div class="control-group">
+        <label>Small Mass (m) <span class="value-display" id="val-m">0.5 kg</span></label>
+        <input type="range" id="input-m" min="0.1" max="2.0" step="0.1" value="0.5">
+    </div>
+
+    <div class="control-group">
+        <label>Large Mass (M) <span class="value-display" id="val-M">15.0 kg</span></label>
+        <input type="range" id="input-M" min="5" max="50" step="1" value="15">
+    </div>
+
+    <div class="control-group">
+        <label>Mass Dist (r) <span class="value-display" id="val-r">0.20 m</span></label>
+        <input type="range" id="input-r" min="0.10" max="0.50" step="0.01" value="0.20">
+    </div>
+
+    <div class="control-group">
+        <label>Pole Length <span class="value-display" id="val-pole">1.00 m</span></label>
+        <input type="range" id="input-pole" min="0.2" max="2.0" step="0.05" value="1.0">
+    </div>
+
+    <div class="control-group">
+        <label>Spring Const (k) <span class="value-display" id="val-k">2.0 N/m</span></label>
+        <input type="range" id="input-k" min="0.5" max="10" step="0.1" value="2">
+    </div>
+
+    <div class="control-group">
+        <label>Damping <span class="value-display" id="val-d">0.20</span></label>
+        <input type="range" id="input-d" min="0" max="1" step="0.01" value="0.20">
+    </div>
+
+    <div class="control-group">
+        <label>Laser Angle (θ) <span class="value-display" id="val-theta">15.0°</span></label>
+        <input type="range" id="input-theta" min="5" max="45" step="0.5" value="15">
+    </div>
+
+    <div class="control-group">
+        <label>Screen Dist (L) <span class="value-display" id="val-L">4.0 m</span></label>
+        <input type="range" id="input-L" min="2" max="10" step="0.1" value="4">
+    </div>
+
+    <div class="control-group" style="margin-top: 10px; border-top: 1px solid #334; padding-top: 8px;">
+        <label>Simulation Mode</label>
+        <select id="mode-select">
+            <option value="actual">Actual G (High Precision)</option>
+            <option value="medium" selected>Medium Mode (3.0e-5)</option>
+            <option value="super">Super Exaggerated (15.0e-5)</option>
+        </select>
+    </div>
+
+    <div class="btn-row">
+        <button id="btn-toggle">PLAY</button>
+        <button id="btn-reset">RESET</button>
+        <button id="btn-view">HOME VIEW</button>
+        <button id="btn-graph">SHOW GRAPH</button>
+        <button id="btn-screen">SHOW 2D SCREEN</button>
+    </div>
+</div>
+
+<div id="stats">
+    <div class="stat-line">Disp: <span id="stat-spot" class="highlight">0.000</span>m</div>
+</div>
+
+<div id="screen-container" class="overlay-container">
+    <div class="container-header">
+        <span>2D SCREEN PROJECTION (cm)</span>
+        <span id="screen-val">0.00cm</span>
+    </div>
+    <canvas id="screen-canvas" class="canvas-el"></canvas>
+</div>
+
+<div id="graph-container" class="overlay-container">
+    <div class="container-header">
+        <span>DISPLACEMENT (m) VS TIME (s)</span>
+        <span id="graph-time">0.00s</span>
+    </div>
+    <canvas id="graph-canvas" class="canvas-el"></canvas>
+</div>
+
+<div id="instructions">
+    Left: Rotate | Right: Pan | Scroll: Zoom
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+const G_MODES = {
+    actual: 6.6743e-11,
+    medium: 3.0e-5,
+    super: 15.0e-5
+};
+
+let scene, camera, renderer, controls;
+let balanceGroup, arm, mirrorMesh, smallM1, smallM2, largeM1, largeM2;
+let laserSource, incidentRay, reflectedRay, physicalScreen;
+let screenCanvasTexture;
+
+const initialCameraPos = { x: 2.5, y: 1.8, z: 3.5 };
+const initialTarget = { x: 0, y: 0.7, z: 0 };
+
+let isPlaying = false;
+let isGraphVisible = false;
+let isScreenVisible = false;
+let simTime = 0;
+let x_disp = 0; // Linear displacement of mass           
+let velocity = 0;
+let spotData = []; 
+
+let params = {
+    m: 0.5,
+    M: 15.0,
+    r: 0.20,
+    poleLength: 1.0,
+    k: 2.0,
+    damping: 0.2,
+    L: 4.0, 
+    laserSourceDist: 1.2, 
+    theta: 15, 
+    mode: 'medium'
+};
+
+function init() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x08080c);
+    
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+    camera.position.set(initialCameraPos.x, initialCameraPos.y, initialCameraPos.z);
+
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    if (THREE.OrbitControls) {
+        controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.enablePan = true; // Explicitly enabled pan
+        controls.target.set(initialTarget.x, initialTarget.y, initialTarget.z);
+    }
+
+    const ambient = new THREE.AmbientLight(0xffffff, 0.7);
+    scene.add(ambient);
+    const topLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    topLight.position.set(5, 10, 5);
+    scene.add(topLight);
+
+    const grid = new THREE.GridHelper(20, 40, 0x222233, 0x11111a);
+    scene.add(grid);
+
+    const fiberGeo = new THREE.CylinderGeometry(0.003, 0.003, 2.0, 8);
+    const fiberMat = new THREE.MeshStandardMaterial({ color: 0x888888 });
+    const fiber = new THREE.Mesh(fiberGeo, fiberMat);
+    fiber.position.y = 1.5;
+    scene.add(fiber);
+
+    balanceGroup = new THREE.Group();
+    balanceGroup.position.y = 0.7;
+    scene.add(balanceGroup);
+
+    const armGeo = new THREE.CylinderGeometry(0.01, 0.01, 1, 16);
+    armGeo.rotateZ(Math.PI / 2);
+    const armMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, metalness: 0.2, roughness: 0.8 });
+    arm = new THREE.Mesh(armGeo, armMat);
+    balanceGroup.add(arm);
+
+    const smallGeo = new THREE.SphereGeometry(0.05, 32, 32);
+    const smallMat = new THREE.MeshStandardMaterial({ color: 0xffaa00, metalness: 0.7, roughness: 0.3 });
+    smallM1 = new THREE.Mesh(smallGeo, smallMat);
+    smallM2 = new THREE.Mesh(smallGeo, smallMat);
+    balanceGroup.add(smallM1);
+    balanceGroup.add(smallM2);
+
+    const mirrorGeo = new THREE.BoxGeometry(0.12, 0.15, 0.015);
+    const mirrorMat = new THREE.MeshStandardMaterial({ color: 0x88ffff, emissive: 0x001111, metalness: 1.0, roughness: 0 });
+    mirrorMesh = new THREE.Mesh(mirrorGeo, mirrorMat);
+    mirrorMesh.position.y = 0.15;
+    balanceGroup.add(mirrorMesh);
+
+    const largeGeo = new THREE.SphereGeometry(0.14, 32, 32);
+    const largeMat = new THREE.MeshStandardMaterial({ color: 0x0044cc, metalness: 0.4, roughness: 0.4 });
+    largeM1 = new THREE.Mesh(largeGeo, largeMat);
+    largeM2 = new THREE.Mesh(largeGeo, largeMat);
+    scene.add(largeM1);
+    scene.add(largeM2);
+
+    const laserSrcGeo = new THREE.BoxGeometry(0.12, 0.08, 0.25);
+    const laserSrcMat = new THREE.MeshStandardMaterial({ color: 0x111111, emissive: 0x001100 });
+    laserSource = new THREE.Mesh(laserSrcGeo, laserSrcMat);
+    scene.add(laserSource);
+
+    const rulerCanvas = document.createElement('canvas');
+    rulerCanvas.width = 1024;
+    rulerCanvas.height = 128;
+    screenCanvasTexture = new THREE.CanvasTexture(rulerCanvas);
+    
+    const screenGeo = new THREE.PlaneGeometry(8, 0.6);
+    const screenMat = new THREE.MeshStandardMaterial({ map: screenCanvasTexture, side: THREE.DoubleSide, transparent: true });
+    physicalScreen = new THREE.Mesh(screenGeo, screenMat);
+    scene.add(physicalScreen);
+
+    const beamMat = new THREE.LineBasicMaterial({ color: 0xff0000 });
+    incidentRay = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), beamMat);
+    scene.add(incidentRay);
+
+    reflectedRay = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), beamMat);
+    scene.add(reflectedRay);
+
+    updateScenePositions();
+    window.addEventListener('resize', onWindowResize);
+}
+
+function onWindowResize() {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
+function updateScenePositions() {
+    const rArm = params.poleLength / 2;
+    arm.scale.set(1, params.poleLength, 1);
+    smallM1.position.x = rArm;
+    smallM2.position.x = -rArm;
+    
+    largeM1.position.set(rArm, 0.7, params.r);
+    largeM2.position.set(-rArm, 0.7, -params.r);
+
+    const radTheta = (params.theta * Math.PI) / 180;
+    const laserX = params.laserSourceDist * Math.sin(radTheta);
+    const laserZ = params.laserSourceDist * Math.cos(radTheta);
+    laserSource.position.set(laserX, 0.85, laserZ);
+    laserSource.lookAt(0, 0.85, 0);
+
+    const mirrorPos = new THREE.Vector3(0, 0.85, 0);
+    const incidentDir = mirrorPos.clone().sub(laserSource.position).normalize();
+    const normal = new THREE.Vector3(0, 0, 1);
+    const reflectDir = incidentDir.clone().reflect(normal).normalize();
+    
+    // VISUAL SCREEN distance is capped at 10m for sightliness
+    const visualL = Math.min(params.L, 10);
+    const screenCenterPos = mirrorPos.clone().add(reflectDir.clone().multiplyScalar(visualL));
+    physicalScreen.position.copy(screenCenterPos);
+    physicalScreen.lookAt(mirrorPos);
+}
+
+function setupUI() {
+    const inputs = { m: 'input-m', M: 'input-M', r: 'input-r', pole: 'input-pole', k: 'input-k', d: 'input-d', theta: 'input-theta', L: 'input-L' };
+    
+    Object.keys(inputs).forEach(key => {
+        const el = document.getElementById(inputs[key]);
+        const valEl = document.getElementById('val-' + key);
+        
+        if (key === 'L') el.max = 10000; // Allow 10km distance for Actual G mode
+
+        el.addEventListener('input', () => {
+            let val = parseFloat(el.value);
+            params[key === 'd' ? 'damping' : key] = val;
+            let unit = (key === 'r' || key === 'L' || key === 'pole') ? " m" : key === 'k' ? " N/m" : key === 'theta' ? "°" : key === 'm' || key === 'M' ? " kg" : "";
+            valEl.innerText = val.toLocaleString() + unit;
+            updateScenePositions();
+        });
+    });
+
+    const modeSelect = document.getElementById('mode-select');
+    modeSelect.addEventListener('change', () => {
+        params.mode = modeSelect.value;
+        const lSlider = document.getElementById('input-L');
+        if (params.mode === 'actual') {
+            lSlider.max = 10000;
+        } else {
+            lSlider.max = 100;
+            if (params.L > 100) {
+                params.L = 100;
+                lSlider.value = 100;
+                document.getElementById('val-L').innerText = "100 m";
+                updateScenePositions();
+            }
+        }
+    });
+
+    document.getElementById('btn-toggle').addEventListener('click', function() {
+        isPlaying = !isPlaying;
+        this.innerText = isPlaying ? "PAUSE" : "PLAY";
+        this.classList.toggle('active', isPlaying);
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+        x_disp = 0; velocity = 0; simTime = 0; spotData = []; 
+        document.getElementById('stat-spot').innerText = "0.000";
+        if (isGraphVisible) drawGraph();
+        if (isScreenVisible) draw2DScreen(0);
+    });
+
+    document.getElementById('btn-view').addEventListener('click', () => {
+        camera.position.set(initialCameraPos.x, initialCameraPos.y, initialCameraPos.z);
+        if (controls) {
+            controls.target.set(initialTarget.x, initialTarget.y, initialTarget.z);
+            controls.update();
+        }
+    });
+
+    document.getElementById('btn-graph').addEventListener('click', function() {
+        isGraphVisible = !isGraphVisible;
+        document.getElementById('graph-container').style.display = isGraphVisible ? 'flex' : 'none';
+        this.innerText = isGraphVisible ? "HIDE GRAPH" : "SHOW GRAPH";
+        this.classList.toggle('active', isGraphVisible);
+        adjustOverlayPositions();
+    });
+
+    document.getElementById('btn-screen').addEventListener('click', function() {
+        isScreenVisible = !isScreenVisible;
+        document.getElementById('screen-container').style.display = isScreenVisible ? 'flex' : 'none';
+        this.innerText = isScreenVisible ? "HIDE 2D SCREEN" : "SHOW 2D SCREEN";
+        this.classList.toggle('active', isScreenVisible);
+        adjustOverlayPositions();
+    });
+}
+
+function adjustOverlayPositions() {
+    const screen = document.getElementById('screen-container');
+    if (isScreenVisible && !isGraphVisible) screen.classList.add('bottom-only');
+    else screen.classList.remove('bottom-only');
+}
+
+function updatePhysics(dt) {
+    if(!isPlaying) return;
+    
+    const G = G_MODES[params.mode];
+    const fg = (G * params.M * params.m) / (params.r * params.r);
+    const xEq = fg / params.k;
+    
+    if (params.damping >= 1.0) {
+        const prevDiff = x_disp - xEq;
+        const fs = -params.k * x_disp;
+        const fd = -params.damping * velocity * 10; 
+        const ftot = fg + fs + fd;
+        const accel = ftot / params.m;
+        
+        velocity += accel * dt;
+        x_disp += velocity * dt;
+        
+        if (Math.sign(prevDiff) !== Math.sign(x_disp - xEq)) {
+            x_disp = xEq;
+            velocity = 0;
+        }
+    } else {
+        const fs = -params.k * x_disp;
+        const fd = -params.damping * velocity;
+        const ftot = fg + fs + fd;
+        const accel = ftot / params.m;
+        velocity += accel * dt;
+        x_disp += velocity * dt;
+    }
+    simTime += dt;
+}
+
+function formatVal(v) {
+    if (params.mode === 'actual') return v.toExponential(4);
+    return v.toFixed(4);
+}
+
+function updateVisuals() {
+    const rArm = params.poleLength / 2;
+    const angle = x_disp / rArm;
+    balanceGroup.rotation.y = angle;
+
+    const mirrorPos = new THREE.Vector3(0, 0.85, 0);
+    const incidentDir = mirrorPos.clone().sub(laserSource.position).normalize();
+    const normal = new THREE.Vector3(Math.sin(angle), 0, Math.cos(angle)).normalize();
+    const reflectDir = incidentDir.clone().reflect(normal).normalize();
+
+    // Spot calculation using full L (can be up to 10km)
+    // s = L * tan(2 * theta_mirror)
+    const spotX = params.L * Math.tan(2 * angle);
+
+    const iPos = incidentRay.geometry.attributes.position.array;
+    iPos[0] = laserSource.position.x; iPos[1] = laserSource.position.y; iPos[2] = laserSource.position.z;
+    iPos[3] = mirrorPos.x; iPos[4] = mirrorPos.y; iPos[5] = mirrorPos.z;
+    incidentRay.geometry.attributes.position.needsUpdate = true;
+
+    // Visual reflection ray only goes to the visual screen distance
+    const visualL = Math.min(params.L, 10);
+    const visualTarget = mirrorPos.clone().add(reflectDir.clone().multiplyScalar(visualL));
+    const rPos = reflectedRay.geometry.attributes.position.array;
+    rPos[0] = mirrorPos.x; rPos[1] = mirrorPos.y; rPos[2] = mirrorPos.z;
+    rPos[3] = visualTarget.x; rPos[4] = visualTarget.y; rPos[5] = visualTarget.z;
+    reflectedRay.geometry.attributes.position.needsUpdate = true;
+
+    document.getElementById('stat-spot').innerText = formatVal(spotX);
+
+    if (isPlaying) {
+        spotData.push({ t: simTime, s: spotX });
+        if (spotData.length > 2000) spotData.shift();
+    }
+
+    if (isGraphVisible) {
+        document.getElementById('graph-time').innerText = simTime.toFixed(2) + "s";
+        drawGraph();
+    }
+    if (isScreenVisible) {
+        const cmVal = spotX * 100;
+        document.getElementById('screen-val').innerText = formatVal(cmVal) + "cm";
+        draw2DScreen(spotX);
+    }
+    draw3DRuler();
+}
+
+function draw3DRuler() {
+    const canvas = screenCanvasTexture.image;
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    
+    const centerX = w / 2;
+    // 3D Visual ruler is fixed range for clarity
+    const pixelsPerM = w / 1.0; // 1 meter wide visual ruler
+    ctx.strokeStyle = "#333333";
+    ctx.lineWidth = 1;
+    for (let i = -0.5; i <= 0.5; i += 0.05) {
+        const xPos = centerX + (i * pixelsPerM);
+        ctx.beginPath();
+        ctx.moveTo(xPos, h);
+        ctx.lineTo(xPos, h - 30);
+        ctx.stroke();
+    }
+    ctx.strokeStyle = "rgba(0,0,255,0.4)";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, h); ctx.stroke();
+    screenCanvasTexture.needsUpdate = true;
+}
+
+function draw2DScreen(spotValM) {
+    const canvas = document.getElementById('screen-canvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.clientWidth;
+    const h = canvas.height = canvas.clientHeight;
+    
+    // Background
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, w, h);
+    
+    const centerX = w / 2;
+    // FIXED RULER: 30cm total (-15 to +15)
+    const rulerRangeM = 0.30; 
+    const pixelsPerM = w / rulerRangeM;
+    
+    ctx.strokeStyle = "#000";
+    ctx.fillStyle = "#000";
+    ctx.textAlign = "center";
+    ctx.font = "bold 12px Inter";
+    
+    // Draw 1cm Ticks
+    for (let i = -0.15; i <= 0.15; i += 0.01) {
+        const xPos = centerX + (i * pixelsPerM);
+        const cmVal = Math.round(i * 100);
+        const isMajor = cmVal % 5 === 0;
+        
+        ctx.beginPath();
+        ctx.lineWidth = isMajor ? 2 : 1;
+        ctx.moveTo(xPos, h);
+        ctx.lineTo(xPos, h - (isMajor ? 35 : 15));
+        ctx.stroke();
+        
+        if (isMajor) {
+            // Use scientific if in actual mode and cmVal is not zero
+            const labelText = (params.mode === 'actual' && cmVal !== 0) ? (cmVal/100).toExponential(1) : cmVal.toString();
+            ctx.fillText(labelText, xPos, 35);
+        }
+    }
+
+    // Zero Marker (Blue)
+    ctx.strokeStyle = "rgba(0,0,255,0.4)";
+    ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(centerX, 0); ctx.lineTo(centerX, h); ctx.stroke();
+    
+    // The Laser Spot
+    const displayPX = centerX + (spotValM * pixelsPerM);
+    const laserY = h / 2 + 10;
+    
+    if (displayPX >= 0 && displayPX <= w) {
+        ctx.fillStyle = "red";
+        ctx.beginPath(); ctx.arc(displayPX, laserY, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 10; ctx.shadowColor = "red";
+        ctx.beginPath(); ctx.arc(displayPX, laserY, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+    }
+}
+
+function drawGraph() {
+    const canvas = document.getElementById('graph-canvas');
+    const ctx = canvas.getContext('2d');
+    const w = canvas.width = canvas.clientWidth;
+    const h = canvas.height = canvas.clientHeight;
+    if (spotData.length < 2) {
+        ctx.fillStyle = "#666"; ctx.textAlign = "center"; ctx.fillText("WAITING FOR DATA...", w/2, h/2);
+        return;
+    }
+    const margin = { top: 20, bottom: 30, left: 80, right: 20 };
+    const chartW = w - margin.left - margin.right;
+    const chartH = h - margin.top - margin.bottom;
+    
+    let minS = Math.min(...spotData.map(d => d.s));
+    let maxS = Math.max(...spotData.map(d => d.s));
+    let absMax = Math.max(Math.abs(minS), Math.abs(maxS), params.mode === 'actual' ? 1e-12 : 0.01);
+    
+    const minT = spotData[0].t;
+    const maxT = spotData[spotData.length - 1].t;
+    const rangeT = Math.max(maxT - minT, 10);
+    const getX = (t) => margin.left + ((t - minT) / rangeT) * chartW;
+    const getY = (s) => (margin.top + chartH / 2) - (s / absMax) * (chartH / 2);
+    
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+    ctx.lineWidth = 1;
+    
+    const hTicks = 4;
+    for (let i = -hTicks; i <= hTicks; i++) {
+        const sVal = (absMax / hTicks) * i;
+        const y = getY(sVal);
+        ctx.beginPath(); ctx.moveTo(margin.left, y); ctx.lineTo(w - margin.right, y); ctx.stroke();
+        ctx.fillStyle = "#999"; ctx.font = "9px monospace"; ctx.textAlign = "right";
+        ctx.fillText(formatVal(sVal), margin.left - 8, y + 3);
+    }
+    
+    ctx.strokeStyle = "#445";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(margin.left, margin.top); ctx.lineTo(margin.left, h - margin.bottom); ctx.lineTo(w - margin.right, h - margin.bottom);
+    ctx.stroke();
+    
+    ctx.strokeStyle = "#f44";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(getX(spotData[0].t), getY(spotData[0].s));
+    for (let i = 1; i < spotData.length; i++) ctx.lineTo(getX(spotData[i].t), getY(spotData[i].s));
+    ctx.stroke();
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+    const now = performance.now();
+    const dt = Math.min((now - lastFrame) / 1000, 0.03); 
+    lastFrame = now;
+    if (controls) controls.update();
+    updatePhysics(dt);
+    updateVisuals();
+    renderer.render(scene, camera);
+}
+
+let lastFrame = performance.now();
+window.onload = () => {
+    init();
+    setupUI();
+    animate();
+};
+</script>
+</body>
+</html>

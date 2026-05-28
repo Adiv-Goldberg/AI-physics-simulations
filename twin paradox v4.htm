@@ -1,0 +1,708 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Twin Paradox: Relativistic Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { background-color: #050510; color: #e2e8f0; overflow: hidden; }
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
+            background: #a855f7; cursor: pointer; margin-top: -6px;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px;
+        }
+        select {
+            background-color: #1e293b; color: #e2e8f0; border: 1px solid #475569;
+            padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; outline: none;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-full font-sans select-none">
+
+    <!-- Header -->
+    <header class="flex items-center justify-between px-6 py-4 bg-[#0a0a16] border-b border-slate-800 flex-none z-10">
+        <div>
+            <h1 class="text-2xl font-bold bg-gradient-to-r from-purple-400 to-blue-500 bg-clip-text text-transparent">
+                Twin Paradox Simulator
+            </h1>
+            <p class="text-xs text-slate-500">Relativistic Frame Switching & Signal Sync</p>
+        </div>
+        
+        <div class="flex bg-slate-800 rounded-lg p-1 gap-1">
+            <button onclick="setMode('dual')" id="btn-dual" class="px-3 py-1.5 rounded-md text-sm transition-all hover:text-white text-slate-400">Dual View</button>
+            <button onclick="setMode('earth')" id="btn-earth" class="px-3 py-1.5 rounded-md text-sm transition-all bg-blue-600 text-white shadow-lg">Earth Frame</button>
+            <button onclick="setMode('rocket')" id="btn-rocket" class="px-3 py-1.5 rounded-md text-sm transition-all hover:text-white text-slate-400">Rocket A Frame</button>
+            <button onclick="setMode('rocketB')" id="btn-rocketB" class="px-3 py-1.5 rounded-md text-sm transition-all hover:text-white text-slate-400">Rocket B Frame</button>
+        </div>
+    </header>
+
+    <!-- Canvas -->
+    <div class="flex-1 relative w-full h-full min-h-0 bg-[#050510]">
+        <canvas id="simCanvas" class="block w-full h-full"></canvas>
+    </div>
+
+    <!-- Controls -->
+    <div class="bg-[#0f101a] border-t border-slate-800 p-4 pb-6 flex-none z-10">
+        <div class="flex flex-col gap-4 max-w-7xl mx-auto">
+            
+            <div class="w-full flex items-center gap-4">
+                <span class="text-xs font-mono text-slate-500">START</span>
+                <input type="range" id="time-slider" step="0.01">
+                <span class="text-xs font-mono text-slate-500">END</span>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                <!-- Playback -->
+                <div class="col-span-12 md:col-span-2 flex items-center gap-3">
+                    <button id="btn-play" class="w-12 h-12 flex items-center justify-center rounded-full bg-purple-600 hover:bg-purple-500 text-white shadow-lg transition-all">
+                        <svg id="icon-play" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+                        <svg id="icon-pause" class="hidden" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg>
+                    </button>
+                    <button id="btn-reset" class="w-10 h-10 flex items-center justify-center rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 transition-all">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>
+                    </button>
+                </div>
+
+                <!-- Parameters -->
+                <div class="col-span-12 md:col-span-7 grid grid-cols-3 gap-x-6 gap-y-4">
+                    <div class="flex flex-col gap-2">
+                        <div class="flex justify-between text-xs font-medium text-slate-400">
+                            <span>VELOCITY (β)</span> <span id="val-velocity" class="text-blue-400">0.80c</span>
+                        </div>
+                        <input type="range" id="input-velocity" min="0.1" max="0.95" step="0.05" value="0.80">
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex justify-between text-xs font-medium text-slate-400">
+                            <span>DISTANCE (D)</span> <span id="val-distance" class="text-pink-400">10.0ly</span>
+                        </div>
+                        <input type="range" id="input-distance" min="2" max="25" step="0.5" value="10.0">
+                    </div>
+                    <div class="flex flex-col gap-2">
+                        <div class="flex justify-between text-xs font-medium text-slate-400">
+                            <span>SIM SPEED</span> <span id="val-speed" class="text-green-400">1.5x</span>
+                        </div>
+                        <input type="range" id="input-speed" min="0.1" max="5.0" step="0.1" value="1.5">
+                    </div>
+                </div>
+
+                <!-- Scenario Selector -->
+                <div class="col-span-12 md:col-span-3 flex flex-col items-end gap-3 border-l border-slate-800 pl-6">
+                    <div class="flex flex-col w-full gap-1">
+                        <span class="text-[10px] font-bold text-slate-400 text-right">SCENARIO MODE</span>
+                        <select id="scenario-select" class="w-full">
+                            <option value="1">1) Show Rocket B & Signal</option>
+                            <option value="2">2) Show Rocket B</option>
+                            <option value="3">3) Hide Rocket B</option>
+                            <option value="4">4) Hide Rocket & Signal</option>
+                            <option value="5">5) Newtonian Mode</option>
+                        </select>
+                    </div>
+                    <div class="text-[10px] text-slate-600 max-w-[150px] text-right">
+                        Gamma (γ): <span id="val-gamma" class="text-purple-400 font-mono">1.667</span>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const COLORS = {
+            bg: '#050510',
+            grid: '#1e1e2e',
+            earth: '#3b82f6',
+            mirrorEarth: 'rgba(59, 130, 246, 0.3)', 
+            star: '#ec4899',
+            rocket: '#a855f7',
+            rocket2: '#f59e0b',
+            text: '#e2e8f0',
+            textDim: '#94a3b8',
+            lightStroke: '#ffff00',
+            warning: '#ef4444',
+            border: '#334155',
+            boxBg: '#0f172a'
+        };
+
+        const state = {
+            isPlaying: false,
+            isPausing: false,
+            time: -10.0, 
+            velocity: 0.80,
+            distance: 10.0,
+            scenario: '1', 
+            showRocketB: true,
+            simSpeed: 1.5,
+            viewMode: 'earth'
+        };
+
+        const getGamma = (v) => 1 / Math.sqrt(1 - v * v);
+        
+        const getTripParams = () => {
+            const D = state.distance;
+            const v = state.velocity;
+            const g = getGamma(v);
+            
+            const turnTime = D / v;
+            const returnTime = 2 * turnTime;
+            const signalEmitTime = -D; 
+            
+            // Bounds
+            let minTime;
+            if (state.scenario === '2' || state.scenario === '4' || state.scenario === '5') {
+                minTime = 0; 
+            } else {
+                minTime = -D * g * g * (1 + v) * 1.05;
+            }
+            
+            const maxTime = returnTime;
+            
+            return { turnTime, returnTime, signalEmitTime, minTime, maxTime };
+        };
+
+        function lorentz(t, x, v) {
+            const gamma = getGamma(v);
+            return {
+                t: gamma * (t - v * x),
+                x: gamma * (x - v * t)
+            };
+        }
+
+        function getWorldState(frameType, viewTime) {
+            const D = state.distance;
+            const v = state.velocity;
+            const { turnTime, returnTime, signalEmitTime } = getTripParams();
+            const gamma = getGamma(v);
+
+            let v_frame = 0;
+            let time_offset = 0;
+            let space_offset = 0;
+            const tau_turn = turnTime / gamma;
+
+            if (frameType === 'rocket') {
+                if (viewTime < tau_turn) {
+                    v_frame = v; // Outbound
+                } else {
+                    v_frame = -v; // Inbound
+                    const t_turn_raw = gamma * (turnTime + v*D);
+                    const x_turn_raw = gamma * (2*D); 
+                    time_offset = t_turn_raw - tau_turn;
+                    space_offset = x_turn_raw; 
+                }
+            } else if (frameType === 'rocketB') {
+                v_frame = -v; // Inbound Inertial
+                const t_meet_raw = gamma * (turnTime + v*D);
+                time_offset = t_meet_raw - tau_turn;
+            }
+
+            const targetT = viewTime + time_offset;
+            const solve = (x0, u) => {
+                const g = getGamma(v_frame);
+                const den = 1 - v_frame*u;
+                if (Math.abs(den) < 1e-9) return targetT/g;
+                return (targetT/g + v_frame*x0) / den;
+            };
+
+            // 1. Earth
+            const t_earth = solve(0, 0);
+            let pEarth = lorentz(t_earth, 0, v_frame);
+            pEarth.t -= time_offset; pEarth.x -= space_offset;
+
+            // 2. Star
+            const t_star = solve(D, 0);
+            let pStar = lorentz(t_star, D, v_frame);
+            pStar.t -= time_offset; pStar.x -= space_offset;
+
+            // 3. Mirror Earth
+            const t_mirror = solve(2*D, 0);
+            let pMirror = lorentz(t_mirror, 2*D, v_frame);
+            pMirror.t -= time_offset; pMirror.x -= space_offset;
+
+            // 4. Rocket A
+            const t_A_out = solve(0, v);
+            let pA_out = lorentz(t_A_out, v*t_A_out, v_frame);
+            pA_out.t -= time_offset; pA_out.x -= space_offset;
+            pA_out.isInbound = false;
+
+            const t_A_in = solve(D + v*turnTime, -v);
+            let pA_in = lorentz(t_A_in, D - v*(t_A_in - turnTime), v_frame);
+            pA_in.t -= time_offset; pA_in.x -= space_offset;
+            pA_in.isInbound = true;
+
+            let pRocketA, t_clock_A;
+            if (frameType === 'rocket') {
+                if (viewTime < tau_turn) { 
+                    pRocketA = pA_out; t_clock_A = t_A_out / gamma; 
+                } else { 
+                    pRocketA = pA_in; t_clock_A = tau_turn + (t_A_in - turnTime)/gamma; 
+                }
+            } else {
+                const turnEvt = lorentz(turnTime, D, v_frame);
+                turnEvt.t -= time_offset;
+                if (viewTime < turnEvt.t) {
+                    pRocketA = pA_out; t_clock_A = t_A_out/gamma;
+                } else {
+                    pRocketA = pA_in; t_clock_A = tau_turn + (t_A_in - turnTime)/gamma;
+                }
+            }
+
+            // 5. Rocket B
+            const t_B = solve(D + v*turnTime, -v);
+            let pRocketB = lorentz(t_B, D - v*(t_B - turnTime), v_frame);
+            pRocketB.t -= time_offset; pRocketB.x -= space_offset;
+            const t_clock_B = t_B / gamma;
+
+            // 6. Signal
+            let signalEvt = lorentz(signalEmitTime, D, v_frame);
+            signalEvt.t -= time_offset; signalEvt.x -= space_offset;
+            const radius = viewTime - signalEvt.t;
+
+            // Clocks
+            let clockEarth = (t_earth >= 0) ? t_earth : null;
+            const clockA = (t_clock_A >= 0) ? t_clock_A : null;
+            const clockB = (t_clock_B >= 0) ? t_clock_B : null;
+
+            if (state.scenario === '5' && frameType === 'rocket' && clockA !== null) {
+                clockEarth = clockA * Math.sqrt(1 - v*v); 
+            }
+
+            return {
+                earth: pEarth, star: pStar, mirrorEarth: pMirror,
+                rocketA: pRocketA, rocketB: pRocketB,
+                signal: { center: signalEvt.x, radius: radius },
+                clocks: { earth: clockEarth, A: clockA, B: clockB },
+                v_frame: v_frame
+            };
+        }
+
+        // --- Drawing ---
+        const canvas = document.getElementById('simCanvas');
+        const ctx = canvas.getContext('2d');
+        const sliderTime = document.getElementById('time-slider');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+
+        // Zoom Lock state
+        let finalZoomScale = null;
+
+        function draw() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            if (canvas.width !== rect.width * dpr) {
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+            }
+            ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.scale(dpr, dpr);
+            ctx.fillStyle = COLORS.bg; ctx.fillRect(0, 0, rect.width, rect.height);
+
+            const w = rect.width;
+            const h = rect.height;
+            const { turnTime, maxTime } = getTripParams();
+            const gamma = getGamma(state.velocity);
+            const D = state.distance;
+            const v = state.velocity;
+
+            // Zoom Locking check
+            if (state.time < maxTime) {
+                finalZoomScale = null;
+            }
+
+            // Proper Times
+            let tau_A;
+            if (state.time <= turnTime) tau_A = state.time / gamma;
+            else tau_A = (turnTime/gamma) + (state.time - turnTime)/gamma;
+
+            // Sync B: B hits star at same proper time as A
+            let tau_B_synced = tau_A;
+
+            if (state.viewMode === 'dual') {
+                const margin = 20;
+                const boxW = (w - 3*margin) / 2;
+                const boxH = h - 2*margin;
+
+                // Maintain Aspect Ratio for boxes
+                // Calculate scale to fit "max content" into single view
+                const singleAR = (w - 40) / (h - 40);
+                const dualBoxH = boxW / singleAR;
+                const vy = (h - dualBoxH) / 2;
+
+                if (state.scenario === '1' || state.scenario === '2') {
+                    // Mode 1, 2: A vs B
+                    drawFrame(margin, vy, boxW, dualBoxH, 'rocket', tau_A);
+                    drawFrame(margin*2 + boxW, vy, boxW, dualBoxH, 'rocketB', tau_B_synced);
+                } else {
+                    // Mode 3, 4, 5: Earth vs A
+                    drawFrame(margin, vy, boxW, dualBoxH, 'earth', state.time);
+                    drawFrame(margin*2 + boxW, vy, boxW, dualBoxH, 'rocket', tau_A);
+                }
+                return;
+            }
+
+            // Single View
+            let viewTime = state.time;
+            if (state.viewMode === 'rocket') viewTime = tau_A;
+            else if (state.viewMode === 'rocketB') viewTime = tau_B_synced;
+
+            drawFrame(0, 0, w, h, state.viewMode, viewTime);
+        }
+
+        function drawFrame(vx, vy, vw, vh, frameType, viewTime) {
+            ctx.save();
+            
+            // Draw Box
+            ctx.fillStyle = COLORS.boxBg;
+            ctx.beginPath(); ctx.roundRect(vx, vy, vw, vh, 12); ctx.fill();
+            ctx.strokeStyle = COLORS.border; ctx.lineWidth = 2; ctx.stroke();
+            
+            ctx.beginPath(); ctx.roundRect(vx, vy, vw, vh, 12); ctx.clip();
+            ctx.translate(vx, vy);
+
+            const centerY = vh / 2;
+            const D = state.distance;
+            const world = getWorldState(frameType, viewTime);
+
+            // Dynamic Zoom Logic
+            let scale;
+            
+            if (finalZoomScale && state.time >= getTripParams().maxTime) {
+                scale = finalZoomScale; // Use locked zoom
+            } else {
+                let camX = 0;
+                if (frameType === 'earth') camX = 0;
+                else if (frameType === 'rocket') camX = world.rocketA.x; 
+                else if (frameType === 'rocketB') camX = world.rocketB.x;
+
+                let maxDist = 0;
+                maxDist = Math.max(maxDist, Math.abs(world.earth.x - camX));
+                maxDist = Math.max(maxDist, Math.abs(world.star.x - camX));
+                maxDist = Math.max(maxDist, Math.abs(world.rocketA.x - camX));
+                
+                // Always include Mirror in calculation for smooth zoom even if hidden
+                maxDist = Math.max(maxDist, Math.abs(world.mirrorEarth.x - camX));
+                if (state.scenario === '1' || state.scenario === '2') {
+                    maxDist = Math.max(maxDist, Math.abs(world.rocketB.x - camX));
+                }
+
+                // Minimum visual width (Zoom Limit)
+                const minDist = D * 2.5; 
+                if (maxDist < minDist) maxDist = minDist;
+
+                scale = (vw / 2 - 60) / maxDist; // Padding
+                
+                // Store for lock if at end
+                if (state.time >= getTripParams().maxTime) {
+                    finalZoomScale = scale;
+                }
+            }
+
+            let camX = 0;
+            if (frameType === 'earth') camX = 0;
+            else if (frameType === 'rocket') camX = world.rocketA.x; 
+            else if (frameType === 'rocketB') camX = world.rocketB.x;
+
+            const toScreen = (x) => vw/2 + (x - camX) * scale;
+
+            // Grid
+            ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, centerY); ctx.lineTo(vw, centerY); ctx.stroke();
+            const gridRange = (vw/2) / scale; 
+            const startGrid = Math.floor((camX - gridRange)/D)*D;
+            const endGrid = Math.ceil((camX + gridRange)/D)*D;
+            
+            for(let x=startGrid; x<=endGrid; x+=D) {
+                let tx = toScreen(x);
+                ctx.moveTo(tx, centerY-5); ctx.lineTo(tx, centerY+5);
+            }
+            ctx.stroke();
+
+            // Signal
+            const showSignal = (state.scenario === '1' || state.scenario === '3');
+            if (showSignal && world.signal.radius > 0) {
+                const cx = toScreen(world.signal.center);
+                const r = world.signal.radius * scale;
+                let opacity = 1.0;
+                if (world.clocks.earth !== null && world.clocks.A !== null && (state.scenario !== '1' || world.clocks.B !== null)) {
+                    const v_abs = Math.abs(world.v_frame);
+                    const gamma_frame = getGamma(v_abs);
+                    const threshold = D * gamma_frame * (1 + v_abs);
+                    if (world.signal.radius > threshold) {
+                        const overshoot = world.signal.radius - threshold;
+                        opacity = Math.max(0, 1.0 - overshoot / (D * 0.5));
+                    }
+                }
+                if (opacity > 0) {
+                    ctx.globalAlpha = opacity;
+                    ctx.strokeStyle = COLORS.lightStroke;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath(); ctx.arc(cx, centerY, r, 0, Math.PI * 2); ctx.stroke();
+                    ctx.globalAlpha = 1.0;
+                }
+            }
+
+            // Object Sizes (Visual Units) - Scale both dimensions
+            const rEarth = 1.2 * scale; 
+            const rStar = 0.8 * scale;
+            const rMirror = 1.2 * scale;
+            const yOffset = 80; 
+
+            // Calculate Visual Contraction for Planets
+            let planetScaleX = 1.0;
+            const gamma = getGamma(state.velocity);
+            if (frameType === 'rocket' || frameType === 'rocketB') {
+                planetScaleX = 1.0 / gamma;
+            }
+
+            // Bodies
+            drawBody(toScreen(world.earth.x), centerY, rEarth, COLORS.earth, "Earth", world.clocks.earth, planetScaleX);
+            drawBody(toScreen(world.star.x), centerY, rStar, COLORS.star, "Star", undefined, planetScaleX);
+            
+            if (state.showRocketB) {
+                drawMirrorBody(toScreen(world.mirrorEarth.x), centerY, rMirror, COLORS.mirrorEarth, "Mirror Earth", planetScaleX);
+            }
+            
+            // Rockets
+            drawRocket(toScreen(world.rocketA.x), centerY - yOffset, scale, COLORS.rocket, "Rocket A", world.rocketA.isInbound, world.clocks.A);
+            
+            if (state.showRocketB) {
+                drawRocket(toScreen(world.rocketB.x), centerY + yOffset, scale, COLORS.rocket2, "Rocket B", true, world.clocks.B);
+            }
+
+            drawLocalHUD(ctx, frameType, world.clocks);
+            ctx.restore();
+        }
+
+        function drawLocalHUD(ctx, frameType, clocks) {
+            const x = 15;
+            const y = 25;
+            const lh = 16;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 14px monospace';
+            let label = "EARTH FRAME";
+            if(frameType === 'rocket') label = "ROCKET A FRAME";
+            if(frameType === 'rocketB') label = "ROCKET B FRAME";
+            ctx.fillText(label, x, y);
+            ctx.font = '12px monospace';
+            const fmt = (v) => (v!==null ? v.toFixed(2)+'y' : 'WAIT');
+            ctx.fillStyle = '#60a5fa'; ctx.fillText(`Earth:    ${fmt(clocks.earth)}`, x, y + lh * 1.5);
+            ctx.fillStyle = '#c084fc'; ctx.fillText(`Rocket A: ${fmt(clocks.A)}`, x, y + lh * 2.5);
+            if (state.scenario === '1' || state.scenario === '2') {
+                ctx.fillStyle = '#fbbf24'; ctx.fillText(`Rocket B: ${fmt(clocks.B)}`, x, y + lh * 3.5);
+            }
+        }
+
+        function drawBody(x, y, r, color, label, time, scaleX = 1.0) {
+            ctx.fillStyle = color;
+            ctx.beginPath(); 
+            ctx.ellipse(x, y, r * scaleX, r, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(label, x, y - r - 8);
+            if (typeof time === 'number') {
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+                ctx.fillText(time.toFixed(2)+'y', x, y + r + 14);
+            } else if (time === null) {
+                ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace';
+                ctx.fillText("WAIT", x, y + r + 14);
+            }
+        }
+
+        function drawMirrorBody(x, y, r, color, label, scaleX = 1.0) {
+            if (!state.showRocketB) return;
+            ctx.fillStyle = color;
+            ctx.beginPath(); 
+            ctx.ellipse(x, y, r * scaleX, r, 0, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 1; ctx.stroke();
+            ctx.fillStyle = COLORS.textDim;
+            ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillText(label, x, y - r - 8);
+        }
+
+        function drawRocket(x, y, scale, color, label, facingLeft, time) {
+            ctx.save();
+            ctx.translate(x, y);
+            const spriteScale = scale * 0.015; 
+            ctx.scale(spriteScale, spriteScale);
+            
+            if (facingLeft) ctx.scale(-1, 1);
+            
+            // Direction Trail Line
+            ctx.globalAlpha = 0.55;
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 10; 
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-5, 0);
+            ctx.lineTo(-60, 0); 
+            ctx.stroke();
+            ctx.globalAlpha = 1.0;
+            
+            // Elongated Arrow
+            ctx.fillStyle = color;
+            ctx.beginPath(); 
+            ctx.moveTo(50, 0); 
+            ctx.lineTo(-15, 15); 
+            ctx.lineTo(-5, 0); 
+            ctx.lineTo(-15, -15);
+            ctx.closePath(); 
+            ctx.fill();
+            
+            // Thruster Flame
+            if (state.isPlaying) {
+                ctx.fillStyle = '#fbbf24';
+                ctx.beginPath(); 
+                ctx.moveTo(-10, 0); 
+                ctx.lineTo(-30, 8); 
+                ctx.lineTo(-45, 0); 
+                ctx.lineTo(-30, -8); 
+                ctx.fill();
+            }
+            ctx.restore();
+            
+            ctx.fillStyle = COLORS.text; ctx.textAlign = 'center';
+            ctx.fillText(label, x, y - 15); 
+            
+            ctx.fillStyle = color; ctx.font = 'bold 12px monospace';
+            const tStr = (time !== null) ? time.toFixed(2) + 'y' : "WAIT";
+            ctx.fillText(tStr, x, y + 25); 
+        }
+
+        function updateScenarioUI() {
+            const btnB = document.getElementById('btn-rocketB');
+            state.showRocketB = (state.scenario === '1' || state.scenario === '2');
+            if (state.showRocketB) {
+                btnB.classList.remove('hidden');
+            } else {
+                btnB.classList.add('hidden');
+                if (state.viewMode === 'rocketB') {
+                    setMode('earth');
+                }
+            }
+        }
+
+        window.setMode = (mode) => {
+            state.viewMode = mode;
+            ['earth', 'rocket', 'rocketB', 'dual'].forEach(m => {
+                const btn = document.getElementById('btn-' + m);
+                if (!btn) return;
+                btn.className = "px-3 py-1.5 rounded-md text-sm transition-all hover:text-white text-slate-400";
+                if (m === mode) {
+                    let color = 'purple';
+                    if (m === 'earth') color = 'blue';
+                    if (m === 'rocket') color = 'purple';
+                    if (m === 'rocketB') color = 'orange';
+                    if (m === 'dual') color = 'gray';
+                    btn.className = `px-3 py-1.5 rounded-md text-sm transition-all bg-${color}-600 text-white shadow-lg`;
+                }
+            });
+            draw();
+        };
+        
+        window.addEventListener('resize', draw);
+
+        const btnPlay = document.getElementById('btn-play');
+        const btnReset = document.getElementById('btn-reset');
+        
+        btnPlay.onclick = () => {
+            const {maxTime, minTime} = getTripParams();
+            if (state.time >= maxTime) {
+                state.time = minTime;
+            }
+            state.isPlaying = !state.isPlaying;
+            state.isPausing = false;
+            iconPlay.classList.toggle('hidden', state.isPlaying);
+            iconPause.classList.toggle('hidden', !state.isPlaying);
+        };
+
+        btnReset.onclick = () => {
+            const {minTime} = getTripParams();
+            state.isPlaying = false;
+            state.isPausing = false;
+            state.time = minTime;
+            sliderTime.value = state.time;
+            iconPlay.classList.remove('hidden');
+            iconPause.classList.add('hidden');
+            draw();
+        };
+
+        let lastT = 0;
+        function loop(t) {
+            const dt = (t - lastT) / 1000;
+            lastT = t;
+            if (state.isPlaying && !state.isPausing) {
+                const oldTime = state.time;
+                state.time += dt * state.simSpeed;
+                const {maxTime, turnTime} = getTripParams();
+                
+                if (oldTime < turnTime && state.time >= turnTime) {
+                    state.isPausing = true;
+                    setTimeout(() => { state.isPausing = false; }, 500);
+                }
+                
+                if (state.time >= maxTime) {
+                    state.time = maxTime;
+                    state.isPausing = true; 
+                    setTimeout(() => {
+                        state.isPlaying = false;
+                        state.isPausing = false;
+                        iconPlay.classList.remove('hidden');
+                        iconPause.classList.add('hidden');
+                        draw(); 
+                    }, 500);
+                }
+                sliderTime.value = state.time;
+            }
+            draw();
+            requestAnimationFrame(loop);
+        }
+
+        const sliderVel = document.getElementById('input-velocity');
+        const sliderDist = document.getElementById('input-distance');
+        const sliderSpeed = document.getElementById('input-speed');
+
+        function updateInputs() {
+            state.time = parseFloat(sliderTime.value);
+            state.velocity = parseFloat(sliderVel.value);
+            state.distance = parseFloat(sliderDist.value);
+            state.simSpeed = parseFloat(sliderSpeed.value);
+            
+            document.getElementById('val-velocity').innerText = state.velocity.toFixed(2)+'c';
+            document.getElementById('val-distance').innerText = state.distance.toFixed(1)+'ly';
+            document.getElementById('val-speed').innerText = state.simSpeed.toFixed(1)+'x';
+            document.getElementById('val-gamma').innerText = getGamma(state.velocity).toFixed(3);
+
+            const {minTime, maxTime} = getTripParams();
+            sliderTime.min = minTime; sliderTime.max = maxTime;
+            draw();
+        }
+
+        sliderTime.addEventListener('input', updateInputs);
+        sliderVel.addEventListener('input', updateInputs);
+        sliderDist.addEventListener('input', updateInputs);
+        sliderSpeed.addEventListener('input', updateInputs);
+
+        const selectScenario = document.getElementById('scenario-select');
+        selectScenario.addEventListener('change', (e) => {
+            state.scenario = e.target.value;
+            updateScenarioUI();
+            const {minTime, maxTime} = getTripParams();
+            state.time = minTime;
+            sliderTime.min = minTime; sliderTime.max = maxTime;
+            sliderTime.value = state.time;
+            draw();
+        });
+
+        updateScenarioUI();
+        const {minTime, maxTime} = getTripParams();
+        state.time = minTime;
+        sliderTime.min = minTime; sliderTime.max = maxTime;
+        sliderTime.value = state.time;
+        requestAnimationFrame(loop);
+    </script>
+</body>
+</html>

@@ -1,0 +1,813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Special Relativity: Signal Chain Fixed</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow-x: hidden;
+        }
+        canvas {
+            image-rendering: antialiased;
+            touch-action: none;
+            display: block;
+        }
+        .control-panel {
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .indicator {
+            transition: all 0.2s ease;
+        }
+        .active-event {
+            box-shadow: 0 0 20px #facc15;
+            border-color: #facc15;
+            background-color: #422006;
+            color: #fef08a;
+        }
+        .view-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        input[type=range] {
+            accent-color: #3b82f6;
+        }
+        .scrubber-container:hover input[type=range] {
+            accent-color: #60a5fa;
+        }
+        /* Radio Button Styling */
+        .radio-group label {
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            font-weight: 700;
+            color: #94a3b8;
+            transition: color 0.2s;
+        }
+        .radio-group input[type="radio"] {
+            appearance: none;
+            width: 1em;
+            height: 1em;
+            border: 2px solid #475569;
+            border-radius: 50%;
+            display: grid;
+            place-content: center;
+            transition: all 0.2s;
+        }
+        .radio-group input[type="radio"]::before {
+            content: "";
+            width: 0.5em;
+            height: 0.5em;
+            border-radius: 50%;
+            transform: scale(0);
+            transition: 120ms transform ease-in-out;
+            box-shadow: inset 1em 1em #3b82f6;
+        }
+        .radio-group input[type="radio"]:checked {
+            border-color: #3b82f6;
+        }
+        .radio-group input[type="radio"]:checked::before {
+            transform: scale(1);
+        }
+        .radio-group input[type="radio"]:checked + span {
+            color: white;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-8">
+
+    <header class="max-w-7xl mx-auto w-full mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-emerald-400">
+                The Train & Tunnel Paradox
+            </h1>
+            <p class="text-slate-400 text-sm">Chain: Train hits S1 &rarr; Light to S2 &rarr; Light to Doors</p>
+        </div>
+        
+        <div class="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+            <button onclick="setView('tunnel')" id="btn-tunnel" class="view-btn px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Tunnel Frame</button>
+            <button onclick="setView('both')" id="btn-both" class="view-btn active px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Dual View</button>
+            <button onclick="setView('train')" id="btn-train" class="view-btn px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Train Frame</button>
+        </div>
+    </header>
+
+    <main id="view-container" class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6 flex-grow transition-all duration-500">
+        
+        <!-- Tunnel Frame View -->
+        <div id="panel-tunnel" class="flex flex-col gap-2">
+            <div class="flex justify-between items-end">
+                <h2 class="text-lg font-semibold text-blue-300">Tunnel Reference Frame</h2>
+                <span id="label-tunnel-contract" class="text-xs text-slate-500">Train is Contracted</span>
+            </div>
+            <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl aspect-[16/9]">
+                <canvas id="tunnelCanvas" class="w-full h-full"></canvas>
+                <div id="tunnelEventA" class="absolute left-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold uppercase indicator">Back Door</div>
+                <div id="tunnelEventB" class="absolute right-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold uppercase indicator">Front Door</div>
+            </div>
+        </div>
+
+        <!-- Train Frame View -->
+        <div id="panel-train" class="flex flex-col gap-2">
+            <div class="flex justify-between items-end">
+                <h2 class="text-lg font-semibold text-emerald-300">Train Reference Frame</h2>
+                <span id="label-train-contract" class="text-xs text-slate-500">Tunnel is Contracted</span>
+            </div>
+            <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl aspect-[16/9]">
+                <canvas id="trainCanvas" class="w-full h-full"></canvas>
+                <div id="trainEventA" class="absolute left-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold uppercase indicator">Back Door</div>
+                <div id="trainEventB" class="absolute right-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold uppercase indicator">Front Door</div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Scrubber -->
+    <div class="max-w-7xl mx-auto w-full mt-6 scrubber-container">
+        <input type="range" id="timeScrub" step="0.1" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+        <div class="flex justify-between text-[10px] text-slate-500 mt-1 uppercase font-bold px-1">
+            <span>Approach</span>
+            <span>Doors Activate</span>
+            <span>Departure</span>
+        </div>
+    </div>
+
+    <!-- Controls -->
+    <footer class="max-w-7xl mx-auto w-full mt-4 control-panel p-6 rounded-2xl flex flex-col gap-6">
+        
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 items-center w-full">
+            <div class="flex gap-4 items-center">
+                <button id="playPauseBtn" class="bg-blue-600 hover:bg-blue-500 text-white w-14 h-14 rounded-full flex items-center justify-center transition-transform active:scale-90 shadow-lg shadow-blue-900/20">
+                    <svg id="playIcon" class="w-7 h-7" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <svg id="pauseIcon" class="w-7 h-7 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+                <button id="resetBtn" class="p-3 text-slate-400 hover:text-white transition-colors bg-slate-800 rounded-full hover:bg-slate-700">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+                <div class="flex flex-col">
+                    <span class="text-[9px] text-slate-500 uppercase font-bold">Coord Time (t)</span>
+                    <span id="timeVal" class="text-lg font-mono text-white leading-none">0.000s</span>
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-xs font-bold text-slate-400 uppercase">Train Velocity ($\beta$)</label>
+                        <span id="betaVal" class="text-sm font-mono text-blue-400">0.80</span>
+                    </div>
+                    <input type="range" id="betaRange" min="0.2" max="0.95" step="0.01" value="0.8" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+
+            <div class="space-y-4">
+                <div>
+                    <div class="flex justify-between mb-1">
+                        <label class="text-xs font-bold text-slate-400 uppercase">Playback Speed</label>
+                        <span id="speedVal" class="text-sm font-mono text-emerald-400">1.0x</span>
+                    </div>
+                    <input type="range" id="speedRange" min="0.1" max="3.0" step="0.1" value="1.0" class="w-full h-1.5 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+                </div>
+            </div>
+        </div>
+
+        <!-- Mode Toggles -->
+        <div class="w-full border-t border-slate-700/50 pt-4">
+            <div class="flex flex-col md:flex-row gap-6 justify-center radio-group">
+                <label>
+                    <input type="radio" name="mode" value="full" checked onchange="setMode('full')">
+                    <span>Relativity + Light Signal</span>
+                </label>
+                <label>
+                    <input type="radio" name="mode" value="paradox" onchange="setMode('paradox')">
+                    <span>Relativity Only (no signal)</span>
+                </label>
+                <label>
+                    <input type="radio" name="mode" value="newton" onchange="setMode('newton')">
+                    <span>Newtonian Physics</span>
+                </label>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const state = {
+            beta: 0.8,
+            gamma: 1.666,
+            time: -400,
+            isPlaying: true,
+            playbackSpeed: 1.0,
+            viewMode: 'both',
+            l_rest_base: 290, 
+            tunnel_w_base: 300,
+            paradoxMode: 'full', // full, paradox, newton
+            
+            // Calculated Physics Constants
+            x_s1: 0,        // Position of Signal 1
+            t_s1: 0,        // Time Train hits S1
+            t_s2: 0,        // Time Light hits S2
+            t_doors: 0,      // Time Light hits Doors (usually 0)
+            
+            // Lock Events
+            t_collision: -300,
+            t_collision_prime: -300,
+            t_s2_prime: -150
+        };
+
+        const canvasT = document.getElementById('tunnelCanvas');
+        const canvasR = document.getElementById('trainCanvas');
+        const ctxT = canvasT.getContext('2d');
+        const ctxR = canvasR.getContext('2d');
+        const scrubber = document.getElementById('timeScrub');
+
+        function recalculatePhysics() {
+            // Calculate Gamma ALWAYS (Length Contraction applies in Newton mode too per user request)
+            state.gamma = 1 / Math.sqrt(1 - state.beta**2);
+
+            // Update Text Labels
+            if (state.paradoxMode === 'newton') {
+                // Hybrid mode: Contraction but no simultaneity shift
+                document.getElementById('label-tunnel-contract').innerText = "Hybrid: Contraction YES";
+                document.getElementById('label-train-contract').innerText = "Hybrid: Contraction YES";
+            } else {
+                document.getElementById('label-tunnel-contract').innerText = "Train is Contracted";
+                document.getElementById('label-train-contract').innerText = "Tunnel is Contracted";
+            }
+            
+            const L_train_rest = state.l_rest_base;
+            const L_tunnel = state.tunnel_w_base;
+            const beta = state.beta;
+            const gamma = state.gamma;
+
+            // --- 1. Calculate ideal S1 position for simultaneity at t=0
+            const t_s2_target = -(L_tunnel / 2); 
+            
+            const L_half_contracted = L_train_rest / (2 * gamma);
+            const LHS = beta * t_s2_target + L_half_contracted;
+            
+            let x_s1_calc;
+            
+            if (LHS >= 0) {
+                x_s1_calc = LHS / (1 + beta);
+            } else {
+                x_s1_calc = LHS / (1 - beta);
+            }
+            
+            state.x_s1 = x_s1_calc;
+
+            // --- 3. Forward Calculate Timeline from Calculated S1 ---
+            state.t_s1 = (state.x_s1 - L_half_contracted) / beta;
+            state.t_s2 = state.t_s1 + Math.abs(state.x_s1);
+            state.t_doors = state.t_s2 + (L_tunnel / 2);
+            
+            // --- 4. Collision & Lock Timings ---
+            // Collision: When Train Front (Center + Width/2) hits Tunnel Entrance (-Width/2)
+            const trainW_c = L_train_rest / gamma;
+            state.t_collision = -(L_tunnel + trainW_c) / (2 * beta);
+            
+            // Transformed Collision Time (Train Frame)
+            // Event: t = t_collision, x = -L_tunnel/2
+            state.t_collision_prime = gamma * (state.t_collision - beta * (-L_tunnel/2));
+
+            // Transformed S2 Time (Train Frame)
+            // Event: t = t_s2, x = 0
+            state.t_s2_prime = gamma * state.t_s2;
+
+            // --- 5. Start Time Logic (Train completely outside tunnel) ---
+            const t_visual_clear = (-L_tunnel/2 - 50 - L_half_contracted) / beta;
+            const t_signal_buffer = state.t_s1 - 100;
+
+            const minTime = Math.floor(Math.min(t_visual_clear, t_signal_buffer));
+            const maxTime = Math.abs(minTime) * 0.8 + 200; 
+            
+            scrubber.min = minTime;
+            scrubber.max = maxTime;
+            
+            if (state.time < minTime || state.time > maxTime) {
+                state.time = minTime;
+            }
+        }
+
+        function setView(mode) {
+            state.viewMode = mode;
+            const container = document.getElementById('view-container');
+            const pTunnel = document.getElementById('panel-tunnel');
+            const pTrain = document.getElementById('panel-train');
+            
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.remove('active'));
+            document.getElementById(`btn-${mode}`).classList.add('active');
+
+            if (mode === 'both') {
+                container.classList.add('lg:grid-cols-2');
+                pTunnel.classList.remove('hidden');
+                pTrain.classList.remove('hidden');
+            } else if (mode === 'tunnel') {
+                container.classList.remove('lg:grid-cols-2');
+                pTunnel.classList.remove('hidden');
+                pTrain.classList.add('hidden');
+            } else if (mode === 'train') {
+                container.classList.remove('lg:grid-cols-2');
+                pTunnel.classList.add('hidden');
+                pTrain.classList.remove('hidden');
+            }
+            resize();
+        }
+
+        function setMode(mode) {
+            state.paradoxMode = mode;
+            recalculatePhysics();
+        }
+
+        // --- DRAWING HELPERS ---
+
+        function drawSignalBox(ctx, x, y, label, active) {
+            if (state.paradoxMode !== 'full') return; 
+
+            const w = 24;
+            const h = 30;
+            ctx.save();
+            ctx.translate(x, y);
+            
+            // Stand
+            ctx.fillStyle = '#475569';
+            ctx.fillRect(-2, 0, 4, 20);
+
+            // Box
+            ctx.fillStyle = active ? '#f59e0b' : '#1e293b'; 
+            ctx.strokeStyle = '#cbd5e1';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.roundRect(-w/2, -h, w, h, 4);
+            ctx.fill();
+            ctx.stroke();
+
+            // Label
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 10px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText(label, 0, -h/2 + 3);
+
+            if (active) {
+                ctx.shadowColor = '#f59e0b';
+                ctx.shadowBlur = 15;
+                ctx.fillStyle = '#fff';
+                ctx.beginPath();
+                ctx.arc(0, -h - 4, 3, 0, Math.PI*2);
+                ctx.fill();
+                ctx.shadowBlur = 0;
+            }
+
+            ctx.restore();
+        }
+
+        function drawTrain(ctx, x, y, width) {
+            const h = 36;
+            ctx.save();
+            ctx.translate(x, y);
+
+            // Shadow
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(2, h + 4, width - 4, 3);
+
+            // Body
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            grad.addColorStop(0, '#60a5fa');
+            grad.addColorStop(1, '#1d4ed8');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.roundRect(0, 0, width, h, [4, 15, 4, 4]);
+            ctx.fill();
+
+            // Windows
+            ctx.fillStyle = 'rgba(191, 219, 254, 0.4)';
+            const count = Math.max(3, Math.floor(width / 50));
+            const wW = (width / count) * 0.5;
+            for(let i=0; i<count; i++) {
+                ctx.fillRect((width/count)*i + (wW/2), 8, wW, 12);
+            }
+
+            // Engine (Front is Right)
+            ctx.fillStyle = '#1e3a8a';
+            ctx.fillRect(width - 12, 4, 8, h - 8);
+
+            // Contact Sensor (at front) - The thing that hits Signal 1
+            if (state.paradoxMode === 'full') {
+                ctx.fillStyle = '#ef4444';
+                ctx.beginPath();
+                ctx.moveTo(width, h/2);
+                ctx.lineTo(width + 8, h/2 - 6);
+                ctx.lineTo(width + 8, h/2 + 6);
+                ctx.fill();
+            }
+
+            // Wheels
+            ctx.fillStyle = '#0f172a';
+            for(let i=15; i<width; i+=40) {
+                ctx.beginPath();
+                ctx.arc(i, h + 4, 5, 0, 6.28);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        function getDoorLevel(t, triggerAt, duration) {
+            if (t < triggerAt) return 0.0;
+            const elapsed = t - triggerAt;
+            // Phase 1: Closing
+            if (elapsed < duration) return elapsed / duration;
+            // Phase 2: Opening
+            if (elapsed < duration * 2) return 1.0 - ((elapsed - duration) / duration);
+            return 0.0;
+        }
+
+        function drawTunnel(ctx, x, y, width, levelL, levelR, drawBackOnly = false) {
+            const h = 80;
+            const roofHeight = 12;
+            const floorHeight = 12;
+
+            ctx.save();
+            ctx.translate(x, y);
+
+            if (drawBackOnly) {
+                // Interior
+                ctx.fillStyle = '#0f172a';
+                ctx.fillRect(0, 0, width, h);
+                // Ribs
+                ctx.strokeStyle = '#1e293b';
+                ctx.lineWidth = 4;
+                for(let i=20; i<width; i+=60) {
+                    ctx.beginPath(); ctx.moveTo(i, 0); ctx.lineTo(i, h); ctx.stroke();
+                }
+                // Rails
+                const railExt = 100000; 
+                ctx.fillStyle = '#475569';
+                ctx.fillRect(-railExt, h - 10, railExt * 2 + width, 4);
+            } else {
+                // Roof/Floor
+                ctx.fillStyle = '#334155';
+                ctx.fillRect(0, -roofHeight, width, roofHeight);
+                ctx.fillRect(0, h, width, floorHeight);
+                // Edges
+                ctx.fillStyle = '#94a3b8'; 
+                ctx.fillRect(0, 0, width, 2); 
+                ctx.fillRect(0, h - 2, width, 2);
+
+                const drawDoor = (posX, level) => {
+                    const doorW = 20;
+                    const dX = posX - doorW/2; 
+                    
+                    // Frame
+                    ctx.fillStyle = '#1e293b';
+                    ctx.fillRect(dX - 2, -roofHeight - 4, doorW + 4, h + roofHeight + floorHeight + 8);
+
+                    if (level > 0.01) {
+                        const currentH = h * level;
+                        const grad = ctx.createLinearGradient(dX, 0, dX + doorW, 0);
+                        grad.addColorStop(0, '#64748b'); grad.addColorStop(1, '#94a3b8');
+                        ctx.fillStyle = grad;
+                        ctx.fillRect(dX, 0, doorW, currentH);
+
+                        // Stripes
+                        ctx.save();
+                        ctx.beginPath(); ctx.rect(dX, 0, doorW, currentH); ctx.clip();
+                        ctx.strokeStyle = '#0f172a'; ctx.lineWidth = 3;
+                        for(let k=-20; k<h; k+=15) {
+                            ctx.beginPath(); ctx.moveTo(dX, k); ctx.lineTo(dX + doorW, k + 15); ctx.stroke();
+                        }
+                        ctx.restore();
+
+                        // Border
+                        ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
+                        ctx.strokeRect(dX, 0, doorW, currentH);
+
+                        // Red Light
+                        ctx.fillStyle = '#ef4444'; ctx.shadowColor = '#ef4444'; ctx.shadowBlur = 10;
+                        ctx.beginPath(); ctx.arc(dX + doorW/2, -roofHeight/2, 3, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+                    } else {
+                        // Green Light
+                        ctx.fillStyle = '#22c55e'; ctx.shadowColor = '#22c55e'; ctx.shadowBlur = 10;
+                        ctx.beginPath(); ctx.arc(dX + doorW/2, -roofHeight/2, 3, 0, Math.PI*2); ctx.fill(); ctx.shadowBlur = 0;
+                    }
+                };
+                drawDoor(0, levelL); 
+                drawDoor(width, levelR);
+            }
+            ctx.restore();
+        }
+
+        function drawLightPulse(ctx, centerX, centerY, currentRadius, maxRadius, color = '250, 204, 21', fadeStartRadius = 0) {
+            if (currentRadius <= 0) return;
+            
+            // Calculate opacity for fading
+            let opacity = 1.0;
+            if (fadeStartRadius > 0 && currentRadius > fadeStartRadius) {
+                 // Fades out over 100 units past fadeStart
+                 opacity = Math.max(0, 1.0 - (currentRadius - fadeStartRadius) / 100);
+            }
+            if (opacity <= 0.01) return;
+
+            ctx.save();
+            ctx.setLineDash([8, 8]);
+            ctx.strokeStyle = `rgba(${color}, ${opacity})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(centerX, centerY, currentRadius, 0, Math.PI*2); ctx.stroke();
+            
+            ctx.strokeStyle = `rgba(${color}, ${opacity * 0.3})`;
+            ctx.lineWidth = 6;
+            ctx.setLineDash([]);
+            ctx.beginPath(); ctx.arc(centerX, centerY, currentRadius, 0, Math.PI*2); ctx.stroke();
+            ctx.restore();
+        }
+
+        function resize() {
+            [canvasT, canvasR].forEach(c => {
+                const parent = c.parentElement;
+                const dpr = window.devicePixelRatio || 1;
+                c.width = parent.clientWidth * dpr;
+                c.height = parent.clientHeight * dpr;
+                const ctx = c.getContext('2d');
+                ctx.resetTransform();
+                ctx.scale(dpr, dpr);
+            });
+        }
+
+        function update() {
+            const dpr = window.devicePixelRatio || 1;
+            
+            if (state.isPlaying) {
+                state.time += 1.5 * state.playbackSpeed;
+                if (state.time > scrubber.max) state.time = parseInt(scrubber.min);
+                scrubber.value = state.time;
+            } else {
+                state.time = parseFloat(scrubber.value);
+            }
+
+            const t = state.time;
+            const beta = state.beta;
+            const gamma = state.gamma;
+            const l_rest = state.l_rest_base;
+            const tW = state.tunnel_w_base;
+            
+            // Animation Speed 2x Faster
+            const animBaseDuration = 25;
+
+            // --- PHYSICS CALCULATIONS ---
+            const x_s1 = state.x_s1;
+            const t_s1 = state.t_s1;
+            const t_s2 = state.t_s2;
+            const t_doors = state.t_doors;
+
+            // --- TUNNEL FRAME RENDER ---
+            if (state.viewMode !== 'train') {
+                const w = canvasT.width / dpr;
+                const h = canvasT.height / dpr;
+                const cx = w / 2;
+                const cy = h * 0.45;
+
+                ctxT.clearRect(0, 0, w, h);
+                ctxT.save(); 
+                
+                const trainW_c = l_rest / gamma;
+                
+                // Train Position: Center is beta*t
+                const trainCenter = beta * t;
+                const trainX_left = trainCenter - trainW_c/2;
+                const trainX_right = trainX_left + trainW_c;
+                
+                // --- CAMERA LOGIC: TUNNEL CENTERED ---
+                // Zoom Lock: Lock if current time > earliest lock event (Collision or S2)
+                // Added -50 buffer (0.5s) to the lock trigger
+                let lockTime = state.t_collision;
+                if (state.paradoxMode === 'full') {
+                    // Lock at whichever happens first (lowest time value)
+                    lockTime = Math.min(lockTime, state.t_s2);
+                }
+                
+                lockTime -= 50; // Buffer: Stop zooming 0.5s early
+
+                // If current time passed the lock time, use the lock time for zoom calculations
+                const zoomT = (t > lockTime) ? lockTime : t;
+
+                // Calculate geometry based on zoomT (locked if passed collision)
+                const trainCenterZoom = beta * zoomT;
+                const trainX_left_Zoom = trainCenterZoom - trainW_c/2;
+                const trainX_right_Zoom = trainX_left_Zoom + trainW_c;
+
+                const margin = 50;
+                const maxDist = Math.max(
+                    tW/2, // Tunnel boundary
+                    Math.abs(trainX_left_Zoom - margin),
+                    Math.abs(trainX_right_Zoom + margin)
+                );
+
+                // Scale logic: 
+                const scale = Math.min((w * 0.35) / tW, (w * 0.45) / maxDist);
+                
+                ctxT.translate(cx, cy);
+                ctxT.scale(scale, scale);
+                ctxT.translate(0, 0); // Lock to Tunnel Center (0)
+                
+                // Door Logic
+                let levelL, levelR;
+                if (state.paradoxMode === 'full') {
+                    // Full Chain: S1 -> S2 -> Doors
+                    levelL = getDoorLevel(t, t_doors, animBaseDuration);
+                    levelR = getDoorLevel(t, t_doors, animBaseDuration);
+                } else if (state.paradoxMode === 'paradox' || state.paradoxMode === 'newton') {
+                     // Instant/Geometric Simultaneity
+                     levelL = getDoorLevel(t, 0, animBaseDuration);
+                     levelR = getDoorLevel(t, 0, animBaseDuration);
+                }
+
+                // 1. Draw Back Tunnel
+                drawTunnel(ctxT, -tW/2, -25, tW, levelL, levelR, true);
+                
+                // 2. Draw Train
+                drawTrain(ctxT, trainX_left, 15, trainW_c);
+
+                // 3. Draw Light Pulses
+                if (state.paradoxMode === 'full') {
+                    if (t > t_s1) {
+                        const maxR = Math.abs(x_s1);
+                        const r = t - t_s1;
+                        drawLightPulse(ctxT, x_s1, 0, r, null, '250, 204, 21', maxR);
+                    }
+                    if (t > t_s2) {
+                        drawLightPulse(ctxT, 0, 0, (t - t_s2), null, '250, 204, 21');
+                    }
+                }
+
+                // 4. Front Tunnel
+                drawTunnel(ctxT, -tW/2, -25, tW, levelL, levelR, false);
+
+                // 5. Draw Signals (Layered ON TOP of tunnel)
+                drawSignalBox(ctxT, x_s1, 15, "S1", t >= t_s1);
+                drawSignalBox(ctxT, 0, 15, "S2", t >= t_s2);
+
+                ctxT.restore();
+
+                // UI Indicators
+                document.getElementById('tunnelEventA').className = `absolute left-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold indicator ${levelL > 0 ? 'active-event' : ''}`;
+                document.getElementById('tunnelEventB').className = `absolute right-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold indicator ${levelR > 0 ? 'active-event' : ''}`;
+            }
+
+            // --- TRAIN FRAME RENDER ---
+            if (state.viewMode !== 'tunnel') {
+                const w = canvasR.width / dpr;
+                const h = canvasR.height / dpr;
+                const cx = w / 2;
+                const cy = h * 0.45;
+
+                ctxR.clearRect(0, 0, w, h);
+                ctxR.save();
+
+                const trainW = l_rest;
+                const tW_c = tW / gamma;
+                const tPrime = t * gamma; 
+                
+                // Train Center is at 0 in Train Frame.
+                const trainLeft = -trainW/2; 
+                
+                const tunnelCenter = -beta * tPrime;
+                const tunnelLeft = tunnelCenter - tW_c/2;
+                
+                // --- CAMERA LOGIC: TRAIN CENTERED ---
+                // Lock Logic (Train Frame)
+                let lockTimePrime = state.t_collision_prime;
+                if (state.paradoxMode === 'full') {
+                    lockTimePrime = Math.min(lockTimePrime, state.t_s2_prime);
+                }
+
+                lockTimePrime -= 50; // Buffer: Stop zooming 0.5s early (in this frame's time)
+
+                // Apply Lock
+                const zoomTPrime = (tPrime > lockTimePrime) ? lockTimePrime : tPrime;
+
+                // Calculate maxDist based on Locked or Current time
+                const tunnelCenterZoom = -beta * zoomTPrime;
+                const tunnelLeftZoom = tunnelCenterZoom - tW_c/2;
+
+                const margin = 50;
+                const maxDist = Math.max(
+                    trainW/2, // Train boundary (fixed at center)
+                    Math.abs(tunnelLeftZoom - margin),
+                    Math.abs(tunnelLeftZoom + tW_c + margin)
+                );
+
+                const scale = Math.min((w * 0.35) / trainW, (w * 0.45) / maxDist);
+                
+                ctxR.translate(cx, cy);
+                ctxR.scale(scale, scale);
+                ctxR.translate(0, 0); // Lock to Train Center (0)
+
+                // --- EVENT TRANSFORMATIONS ---
+                const t_s1_prime = gamma * (t_s1 - beta * x_s1);
+                const x_s1_prime_event = gamma * (x_s1 - beta * t_s1); 
+                const x_s2_prime_event = gamma * (0 - beta * t_s2); 
+                const t_s2_prime_event = gamma * t_s2; // Local calc for pulse logic
+
+                const t_doors_tunnel = t_doors; 
+                const t_doorL_prime_full = gamma * (t_doors_tunnel - beta * (-tW/2));
+                const t_doorR_prime_full = gamma * (t_doors_tunnel - beta * (tW/2));
+
+                const scaledDuration = animBaseDuration * gamma;
+
+                let levelL, levelR;
+                if (state.paradoxMode === 'paradox') {
+                     const t_simult = 0;
+                     levelL = getDoorLevel(tPrime, gamma*(t_simult - beta*(-tW/2)), scaledDuration);
+                     levelR = getDoorLevel(tPrime, gamma*(t_simult - beta*(tW/2)), scaledDuration);
+                } else if (state.paradoxMode === 'newton') {
+                    // Hybrid Newton: Contraction exists, but absolute simultaneity (time is t, not t')
+                    levelL = getDoorLevel(t, 0, animBaseDuration);
+                    levelR = getDoorLevel(t, 0, animBaseDuration);
+                } else {
+                    levelL = getDoorLevel(tPrime, t_doorL_prime_full, scaledDuration);
+                    levelR = getDoorLevel(tPrime, t_doorR_prime_full, scaledDuration);
+                }
+
+                // DRAW OBJECTS
+                
+                // 1. Back Tunnel
+                drawTunnel(ctxR, tunnelLeft, -25, tW_c, levelL, levelR, true);
+
+                // 2. Train
+                drawTrain(ctxR, trainLeft, 15, trainW);
+
+                // 3. Light Pulses
+                if (state.paradoxMode === 'full') {
+                    if (tPrime > t_s1_prime) {
+                        const r = tPrime - t_s1_prime;
+                        const maxR = t_s2_prime_event - t_s1_prime;
+                        drawLightPulse(ctxR, x_s1_prime_event, 0, r, null, '250, 204, 21', maxR);
+                    }
+                    if (tPrime > t_s2_prime_event) {
+                        drawLightPulse(ctxR, x_s2_prime_event, 0, (tPrime - t_s2_prime_event), null, '250, 204, 21');
+                    }
+                }
+
+                // 4. Front Tunnel
+                drawTunnel(ctxR, tunnelLeft, -25, tW_c, levelL, levelR, false);
+
+                // 5. Signals (Layered ON TOP)
+                const s2_pos_current = tunnelCenter;
+                const s1_pos_current = tunnelCenter + (x_s1 / gamma);
+                drawSignalBox(ctxR, s1_pos_current, 15, "S1", tPrime >= t_s1_prime);
+                drawSignalBox(ctxR, s2_pos_current, 15, "S2", tPrime >= t_s2_prime_event);
+
+                ctxR.restore();
+
+                document.getElementById('trainEventA').className = `absolute left-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold indicator ${levelL > 0 ? 'active-event' : ''}`;
+                document.getElementById('trainEventB').className = `absolute right-6 top-6 px-3 py-1.5 rounded-full border border-slate-700 bg-slate-800 text-[11px] font-bold indicator ${levelR > 0 ? 'active-event' : ''}`;
+            }
+
+            document.getElementById('timeVal').innerText = (t / 100).toFixed(3) + 's';
+            requestAnimationFrame(update);
+        }
+
+        // Controls
+        document.getElementById('betaRange').addEventListener('input', (e) => {
+            state.beta = parseFloat(e.target.value);
+            document.getElementById('betaVal').innerText = state.beta.toFixed(2);
+            recalculatePhysics();
+        });
+        document.getElementById('speedRange').addEventListener('input', (e) => {
+            state.playbackSpeed = parseFloat(e.target.value);
+            document.getElementById('speedVal').innerText = state.playbackSpeed.toFixed(1) + 'x';
+        });
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            state.isPlaying = !state.isPlaying;
+            document.getElementById('playIcon').classList.toggle('hidden', state.isPlaying);
+            document.getElementById('pauseIcon').classList.toggle('hidden', !state.isPlaying);
+        });
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            recalculatePhysics();
+            state.time = parseInt(scrubber.min); // Reset to start
+            scrubber.value = state.time;
+        });
+        
+        scrubber.addEventListener('mousedown', () => state.isPlaying = false);
+        scrubber.addEventListener('input', () => {
+            state.isPlaying = false;
+            state.time = parseFloat(scrubber.value);
+            document.getElementById('playIcon').classList.remove('hidden');
+            document.getElementById('pauseIcon').classList.add('hidden');
+        });
+
+        window.addEventListener('resize', resize);
+        window.onload = () => { 
+            recalculatePhysics(); 
+            resize(); 
+            requestAnimationFrame(update); 
+        };
+    </script>
+</body>
+</html>

@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relativity: The Ladder Paradox (Rebounding)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: #e2e8f0;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            overflow-x: hidden;
+        }
+        canvas {
+            image-rendering: pixelated;
+            touch-action: none;
+            display: block;
+        }
+        .control-panel {
+            background: rgba(30, 41, 59, 0.95);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .indicator {
+            transition: all 0.2s ease;
+        }
+        .view-btn.active, .wave-btn.active {
+            background-color: #3b82f6;
+            color: white;
+        }
+        input[type=range] {
+            accent-color: #3b82f6;
+        }
+        .scrubber-container {
+            user-select: none;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col p-4 md:p-8">
+
+    <header class="max-w-7xl mx-auto w-full mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+            <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-rose-400 to-orange-400">
+                The Ladder Paradox
+            </h1>
+            <p class="text-slate-400 text-sm">Relativistic Rebound: Independent Frame Pausing</p>
+        </div>
+        
+        <div class="flex bg-slate-800 p-1 rounded-lg border border-slate-700">
+            <button onclick="setView('barn')" id="btn-barn" class="view-btn px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Barn Frame</button>
+            <button onclick="setView('both')" id="btn-both" class="view-btn active px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Dual View</button>
+            <button onclick="setView('ladder')" id="btn-ladder" class="view-btn px-4 py-1.5 rounded-md text-sm font-medium transition-all text-slate-400 hover:text-white">Ladder Frame</button>
+        </div>
+    </header>
+
+    <main id="view-container" class="max-w-7xl mx-auto w-full grid grid-cols-1 lg:grid-cols-2 gap-6 flex-grow transition-all duration-500">
+        
+        <div id="panel-barn" class="flex flex-col gap-2">
+            <div class="flex justify-between items-end">
+                <h2 class="text-lg font-semibold text-rose-300">Barn Reference Frame</h2>
+                <span class="text-xs text-slate-500">Ladder hits wall and rebounds</span>
+            </div>
+            <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl aspect-[16/9]">
+                <canvas id="barnCanvas" class="w-full h-full"></canvas>
+                <!-- Removed barnEvent indicator -->
+            </div>
+        </div>
+
+        <div id="panel-ladder" class="flex flex-col gap-2">
+            <div class="flex justify-between items-end">
+                <h2 class="text-lg font-semibold text-orange-300">Ladder Reference Frame</h2>
+                <span class="text-xs text-slate-500">Camera: Stationary on Ladder → Stationary on Barn</span>
+            </div>
+            <div class="relative bg-slate-950 rounded-xl overflow-hidden border border-slate-800 shadow-2xl aspect-[16/9]">
+                <canvas id="ladderCanvas" class="w-full h-full"></canvas>
+                <!-- Removed ladderEvent indicator -->
+            </div>
+        </div>
+
+    </main>
+
+    <div class="max-w-7xl mx-auto w-full mt-6 scrubber-container">
+        <input type="range" id="timeScrub" min="-800" max="8000" step="1" value="-400" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer">
+        <div class="flex justify-between text-[10px] text-slate-500 mt-1 uppercase font-bold px-1">
+            <span>Approach</span>
+            <span>Impact (t=0)</span>
+            <span>Reflect</span>
+            <span>Exit Complete</span>
+        </div>
+    </div>
+
+    <footer class="max-w-7xl mx-auto w-full mt-4 control-panel p-6 rounded-2xl grid grid-cols-1 md:grid-cols-5 gap-6 items-center">
+        
+        <div class="flex gap-4 items-center">
+            <button id="playPauseBtn" class="bg-rose-600 hover:bg-rose-500 text-white w-12 h-12 rounded-full flex items-center justify-center transition-transform active:scale-90 shadow-lg shadow-rose-900/20">
+                <svg id="playIcon" class="w-6 h-6 hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                <svg id="pauseIcon" class="w-6 h-6" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+            </button>
+            <button id="resetBtn" class="p-2.5 text-slate-400 hover:text-white transition-colors bg-slate-800 rounded-full hover:bg-slate-700">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </button>
+            <div class="flex flex-col">
+                <span id="timeVal" class="text-base font-mono text-white leading-none">0.000s</span>
+                <span class="text-[9px] text-slate-500 uppercase font-bold mt-1">Coord Time</span>
+            </div>
+        </div>
+
+        <div>
+            <div class="flex justify-between mb-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Velocity ($\beta$)</label>
+                <span id="betaVal" class="text-xs font-mono text-rose-400">0.80</span>
+            </div>
+            <!-- Slider Removed -->
+            <div class="w-full h-1 bg-slate-800 rounded-lg opacity-50"></div>
+        </div>
+
+        <div>
+            <div class="flex justify-between mb-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Info Speed ($u$)</label>
+                <span id="infoVal" class="text-xs font-mono text-amber-400">1.00c</span>
+            </div>
+            <input type="range" id="infoRange" min="0.1" max="1.0" step="0.05" value="1.0" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <div>
+            <div class="flex justify-between mb-1">
+                <label class="text-[10px] font-bold text-slate-400 uppercase">Playback Speed</label>
+                <span id="speedVal" class="text-xs font-mono text-orange-400">1.0x</span>
+            </div>
+            <input type="range" id="speedRange" min="0.1" max="2.0" step="0.1" value="1.0" class="w-full h-1 bg-slate-700 rounded-lg appearance-none cursor-pointer">
+        </div>
+
+        <div class="flex flex-col gap-2">
+            <label class="text-[10px] font-bold text-slate-400 uppercase">Wave Visibility</label>
+            <div class="flex bg-slate-800 p-1 rounded-lg border border-slate-700 shrink-0">
+                <button onclick="setWaveMode('all')" id="wave-all" class="wave-btn active flex-1 py-1 rounded text-[10px] font-bold transition-all text-slate-400 uppercase">All</button>
+                <button onclick="setWaveMode('before')" id="wave-before" class="wave-btn flex-1 py-1 rounded text-[10px] font-bold transition-all text-slate-400 uppercase">Entry</button>
+                <button onclick="setWaveMode('never')" id="wave-never" class="wave-btn flex-1 py-1 rounded text-[10px] font-bold transition-all text-slate-400 uppercase">None</button>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const INITIAL_SCALE = 0.85;
+        const NUM_LINES = 6;
+
+        const state = {
+            beta: 0.80, // Locked to 0.80c
+            gamma: 1 / Math.sqrt(1 - 0.80**2),
+            infoSpeed: 1.0,
+            time: -400,
+            prevTime: -400,
+            isPlaying: true,
+            playbackSpeed: 1.0,
+            viewMode: 'both',
+            l_rest: 450, 
+            b_rest: 360, 
+            // Wave visibility mode: 'all', 'before', 'never'
+            showWave: 'all',
+            // Pausing logic variables
+            barnEnded: false,
+            ladderEnded: false,
+            barnFreezeTime: 0,
+            ladderFreezeTime: 0,
+            allFinishedTime: 0
+        };
+
+        const canvasB = document.getElementById('barnCanvas');
+        const canvasL = document.getElementById('ladderCanvas');
+        const ctxB = canvasB.getContext('2d');
+        const ctxL = canvasL.getContext('2d');
+        const scrubber = document.getElementById('timeScrub');
+
+        function setView(mode) {
+            state.viewMode = mode;
+            const container = document.getElementById('view-container');
+            document.querySelectorAll('.view-btn').forEach(b => b.classList.toggle('active', b.id === `btn-${mode}`));
+            
+            const barnPanel = document.getElementById('panel-barn');
+            const ladderPanel = document.getElementById('panel-ladder');
+            
+            if (mode === 'both') {
+                container.classList.add('lg:grid-cols-2');
+                barnPanel.classList.remove('hidden');
+                ladderPanel.classList.remove('hidden');
+            } else if (mode === 'barn') {
+                container.classList.remove('lg:grid-cols-2');
+                barnPanel.classList.remove('hidden');
+                ladderPanel.classList.add('hidden');
+            } else {
+                container.classList.remove('lg:grid-cols-2');
+                barnPanel.classList.add('hidden');
+                ladderPanel.classList.remove('hidden');
+            }
+            resize();
+        }
+
+        function setWaveMode(mode) {
+            state.showWave = mode;
+            document.querySelectorAll('.wave-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.id === `wave-${mode}`);
+                btn.classList.toggle('text-white', btn.id === `wave-${mode}`);
+                btn.classList.toggle('text-slate-400', btn.id !== `wave-${mode}`);
+            });
+        }
+
+        function drawLadder(ctx, positions) {
+            const h = 40; 
+            const y = 20; // Centered vertically in barn (0-80 space)
+            const railExtension = 8; // Extend rails past the first/last rungs
+            
+            if (positions.length === 0) return;
+
+            const xFirst = positions[0];
+            const xLast = positions[positions.length - 1];
+            
+            ctx.save();
+            
+            // 1. Draw Rails (Horizontal)
+            ctx.strokeStyle = '#cbd5e1'; // Aluminum / Light Grey
+            ctx.lineWidth = 6;
+            ctx.lineCap = 'butt';
+            
+            // Top Rail
+            ctx.beginPath();
+            ctx.moveTo(xFirst - railExtension, y);
+            ctx.lineTo(xLast + railExtension, y);
+            ctx.stroke();
+
+            // Bottom Rail
+            ctx.beginPath();
+            ctx.moveTo(xFirst - railExtension, y + h);
+            ctx.lineTo(xLast + railExtension, y + h);
+            ctx.stroke();
+            
+            // 2. Draw Rungs (Vertical)
+            ctx.strokeStyle = '#cbd5e1'; // Aluminum / Metal (Matched to Rails)
+            ctx.lineWidth = 4;
+            ctx.lineCap = 'round';
+            
+            for (let i = 0; i < positions.length; i++) {
+                const x = positions[i];
+                
+                // Rung Body
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + h);
+                ctx.stroke();
+                
+                // Rivets/Connectors
+                ctx.fillStyle = '#64748b'; // Darker grey for rivets
+                ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(x, y+h, 2.5, 0, Math.PI*2); ctx.fill();
+            }
+            
+            ctx.restore();
+        }
+
+        function drawWaves(ctx, wavePositions) {
+            const h = 60; 
+            const y = 10; // Adjusted to center around the ladder (20 to 60)
+            ctx.strokeStyle = '#22d3ee';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([5, 5]); 
+            for (let x of wavePositions) {
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y + h);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]); 
+        }
+
+        function drawBarn(ctx, x, y, width, hasBackWall = true) {
+            const h = 80;
+            const roofHeight = 25;
+            const wallThickness = 8;
+            // VISUAL ADJUSTMENT: Shift the entire barn visual to the right
+            // Reduced from 13 to 12 to move it 1 more pixel left
+            const visualShift = 12; 
+            
+            ctx.save();
+            ctx.translate(x + visualShift, y);
+            
+            // Draw Ground
+            ctx.fillStyle = '#1e293b'; 
+            ctx.fillRect(-20000, h, 40000, 4);
+
+            // Draw Interior (Darker Red, horizontal siding look)
+            ctx.fillStyle = 'rgba(69, 10, 10, 0.4)';
+            ctx.fillRect(0, 0, width, h);
+            
+            // Siding lines
+            ctx.beginPath();
+            ctx.strokeStyle = 'rgba(127, 29, 29, 0.3)';
+            ctx.lineWidth = 1;
+            for(let i=10; i<h; i+=10) {
+                ctx.moveTo(0, i);
+                ctx.lineTo(width, i);
+            }
+            ctx.stroke();
+
+            // Draw Roof
+            ctx.fillStyle = '#991b1b'; // Red-800
+            ctx.beginPath();
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(width/2, -roofHeight);
+            ctx.lineTo(width + 10, 0);
+            ctx.lineTo(width, 0);
+            ctx.lineTo(0, 0);
+            ctx.fill();
+            
+            // Roof Trim
+            ctx.strokeStyle = '#fca5a5'; // Red-300
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-10, 0);
+            ctx.lineTo(width/2, -roofHeight);
+            ctx.lineTo(width + 10, 0);
+            ctx.stroke();
+
+            // Walls (Posts)
+            ctx.fillStyle = '#b91c1c'; // Red-700
+            
+            // Front Post (Left)
+            ctx.fillRect(0, 0, wallThickness, h);
+            
+            // Back Post (Right)
+            if(hasBackWall) {
+                // VISUAL FIX: Shift the visual back wall right so it starts where the logical stop is
+                ctx.fillRect(width - 2, 0, wallThickness, h);
+            }
+
+            // Crossbuck details (White X)
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+            ctx.lineWidth = 2;
+
+            // Left Post X
+            ctx.beginPath();
+            ctx.moveTo(0, 0); ctx.lineTo(wallThickness, h * 0.3);
+            ctx.moveTo(wallThickness, 0); ctx.lineTo(0, h * 0.3);
+            ctx.stroke();
+
+            // Right Post X
+            if(hasBackWall) {
+                const bx = width - 2; 
+                ctx.beginPath();
+                ctx.moveTo(bx, 0); ctx.lineTo(bx + wallThickness, h * 0.3);
+                ctx.moveTo(bx + wallThickness, 0); ctx.lineTo(bx, h * 0.3);
+                ctx.stroke();
+            }
+
+            ctx.restore();
+        }
+
+        function resize() {
+            [canvasB, canvasL].forEach(c => {
+                const p = c.parentElement;
+                if (!p || p.classList.contains('hidden')) return;
+                const dpr = window.devicePixelRatio || 1;
+                c.width = p.clientWidth * dpr;
+                c.height = p.clientHeight * dpr;
+                const ctx = c.getContext('2d');
+                ctx.resetTransform();
+                ctx.scale(dpr, dpr);
+            });
+        }
+
+        function update() {
+            const v = state.beta;
+            const u = state.infoSpeed;
+            const gamma = state.gamma;
+            const lW_rest = state.l_rest;
+            const lW_contracted = lW_rest / gamma;
+            const dpr = window.devicePixelRatio || 1;
+
+            // Speeds
+            const u_fwd_ladder = (u + v) / (1 + u * v);
+            const u_rev_ladder = u_fwd_ladder - 2 * v; 
+
+            // Calculate the velocity of the reflected wave in the Barn frame
+            // by transforming the Ladder-frame reflected velocity (u_rev_ladder) back to Barn frame.
+            const u_barn_rebound = (u_rev_ladder + v) / (1 + u_rev_ladder * v);
+
+            const t_stop_back_barn = lW_contracted / (u + v);
+            const x_stop_back_barn = -lW_contracted + v * t_stop_back_barn;
+            
+            // --- FRAME INDEPENDENT DETECTION ---
+            if (!state.barnEnded && state.time > t_stop_back_barn) {
+                // Updated to use u_barn_rebound instead of u so the simulation 
+                // waits for the slower relativistic wave to reach the wall before stopping.
+                const waveReboundPos = x_stop_back_barn + u_barn_rebound * (state.time - t_stop_back_barn);
+                if (waveReboundPos >= 0) {
+                    state.barnEnded = true;
+                    state.barnFreezeTime = state.time;
+                }
+            }
+
+            const tP_current = state.time * gamma;
+            const tP_stop_back = lW_rest / u_fwd_ladder;
+            if (!state.ladderEnded && tP_current > tP_stop_back) {
+                const wPos = 0 + u_rev_ladder * (tP_current - tP_stop_back);
+                const wallX = lW_rest - v * tP_current;
+                if (wPos >= wallX) {
+                    state.ladderEnded = true;
+                    state.ladderFreezeTime = state.time;
+                }
+            }
+
+            // --- PLAYBACK CONTROL ---
+            if (state.isPlaying) {
+                if (state.barnEnded && state.ladderEnded) {
+                    if (state.allFinishedTime === 0) state.allFinishedTime = Date.now();
+                    if (Date.now() - state.allFinishedTime > 1500) {
+                        state.time = -400;
+                        state.barnEnded = false;
+                        state.ladderEnded = false;
+                        state.allFinishedTime = 0;
+                    }
+                } else {
+                    state.time += 1.5 * state.playbackSpeed;
+                }
+                scrubber.value = state.time;
+            } else {
+                state.time = parseFloat(scrubber.value);
+                state.barnEnded = false;
+                state.ladderEnded = false;
+                state.allFinishedTime = 0;
+            }
+
+            if (state.time > scrubber.max) scrubber.max = state.time + 100;
+
+            const cy = 120;
+            const bW = state.b_rest;
+            const zoomMultiplier = (state.viewMode !== 'both') ? 1.3 : 1.0;
+
+            // --- RENDER BARN FRAME ---
+            const tBarn = state.barnEnded ? state.barnFreezeTime : state.time;
+            if (state.viewMode !== 'ladder') {
+                const w = canvasB.width / dpr;
+                const h = canvasB.height / dpr;
+                ctxB.clearRect(0, 0, w, h);
+                const positions = [];
+                const waves = [];
+                const step = lW_contracted / (NUM_LINES - 1);
+                for(let i=0; i<NUM_LINES; i++) {
+                    const distFromFront = (NUM_LINES - 1 - i) * step;
+                    const t_stop = distFromFront / (u + v);
+                    const x_stop = -distFromFront + v * t_stop;
+
+                    // Use u_barn_rebound for the signal propagation time after reflection
+                    const t_rebound = t_stop_back_barn + (x_stop - x_stop_back_barn) / u_barn_rebound;
+                    
+                    let pos;
+                    if (tBarn < t_stop) pos = -distFromFront + v * tBarn;
+                    else if (tBarn < t_rebound) pos = x_stop;
+                    else pos = x_stop - v * (tBarn - t_rebound);
+                    positions.push(pos);
+                    if (i === NUM_LINES - 1 && state.showWave !== 'never') {
+                        if (tBarn > 0 && tBarn <= t_stop_back_barn) waves.push(-u * tBarn);
+                        else if (tBarn > t_stop_back_barn && state.showWave === 'all') {
+                            // Use the relativistic rebound speed for the wave visualization
+                            const wrp = x_stop_back_barn + u_barn_rebound * (tBarn - t_stop_back_barn);
+                            if (wrp < 0) waves.push(wrp);
+                        }
+                    }
+                }
+                ctxB.save(); 
+                ctxB.translate(w/2, cy + 20);
+                ctxB.scale(INITIAL_SCALE * zoomMultiplier, INITIAL_SCALE * zoomMultiplier); 
+                ctxB.translate(150, 0); 
+                drawBarn(ctxB, -state.b_rest, -20, state.b_rest, true);
+                drawLadder(ctxB, positions);
+                drawWaves(ctxB, waves); 
+                ctxB.restore();
+                // Removed barnEvent opacity logic
+            }
+
+            // --- RENDER LADDER FRAME ---
+            const tLadder = state.ladderEnded ? state.ladderFreezeTime : state.time;
+            const tP = tLadder * gamma; 
+            if (state.viewMode !== 'barn') {
+                const w = canvasL.width / dpr;
+                const h = canvasL.height / dpr;
+                ctxL.clearRect(0, 0, w, h);
+                const wallX = lW_rest - v * tP;
+                const positions = [];
+                const waves = [];
+                const step = lW_rest / (NUM_LINES - 1);
+                const tP_sb = lW_rest / u_fwd_ladder;
+                for(let i=0; i<NUM_LINES; i++) {
+                    const restPos = i * step;
+                    const tP_stop = (lW_rest - restPos) / u_fwd_ladder;
+                    const tP_rebound = (restPos + u_rev_ladder * tP_sb + v * tP_stop) / (u_rev_ladder + v);
+                    let pos;
+                    if (tP < tP_stop) pos = restPos;
+                    else if (tP < tP_rebound) {
+                        pos = restPos - v * (tP - tP_stop);
+                        if (pos > wallX) pos = wallX;
+                    } else pos = (restPos - v * (tP_rebound - tP_stop)) - (2 * v) * (tP - tP_rebound);
+                    positions.push(pos);
+                    if (i === NUM_LINES - 1 && state.showWave !== 'never') {
+                        if (tP > 0 && tP <= tP_sb) waves.push(lW_rest - u_fwd_ladder * tP);
+                        else if (tP > tP_sb && state.showWave === 'all') {
+                            const wp = 0 + u_rev_ladder * (tP - tP_sb);
+                            if (wp < lW_rest + 100) waves.push(wp);
+                        }
+                    }
+                }
+                let vc = tP <= 0 ? lW_rest / 2 : wallX - (lW_rest / 2);
+                ctxL.save();
+                ctxL.translate(w/2, cy + 20);
+                ctxL.scale(INITIAL_SCALE * zoomMultiplier, INITIAL_SCALE * zoomMultiplier); 
+                ctxL.translate(-vc, 0); 
+                
+                // --- BARN SNAP LOGIC START ---
+                // Snap barn to proper length instant it stops moving (relative to observer)
+                // Trigger at t=0 (impact/start of info wave)
+                const isImpact = tP >= 0; 
+                const currentBarnWidth = isImpact ? bW : bW/gamma;
+                // Anchor the barn to the wall position (right side) so impact point stays consistent
+                drawBarn(ctxL, wallX - currentBarnWidth, -20, currentBarnWidth, true);
+                // --- BARN SNAP LOGIC END ---
+                
+                drawLadder(ctxL, positions);
+                drawWaves(ctxL, waves);
+                ctxL.restore();
+                // Removed ladderEvent opacity logic
+            }
+
+            state.prevTime = state.time;
+            document.getElementById('timeVal').innerText = (state.time / 100).toFixed(3) + 's';
+            requestAnimationFrame(update);
+        }
+
+        // Controls
+        /* REMOVED betaRange LISTENER */
+        document.getElementById('infoRange').addEventListener('input', (e) => {
+            state.infoSpeed = parseFloat(e.target.value);
+            document.getElementById('infoVal').innerText = state.infoSpeed.toFixed(2) + 'c';
+        });
+        document.getElementById('speedRange').addEventListener('input', (e) => {
+            state.playbackSpeed = parseFloat(e.target.value);
+            document.getElementById('speedVal').innerText = state.playbackSpeed.toFixed(1) + 'x';
+        });
+        document.getElementById('playPauseBtn').addEventListener('click', () => {
+            state.isPlaying = !state.isPlaying;
+            document.getElementById('playIcon').classList.toggle('hidden', state.isPlaying);
+            document.getElementById('pauseIcon').classList.toggle('hidden', !state.isPlaying);
+        });
+        document.getElementById('resetBtn').addEventListener('click', () => {
+            state.time = -400; scrubber.value = -400;
+        });
+        scrubber.addEventListener('mousedown', () => state.isPlaying = false);
+        scrubber.addEventListener('input', () => {
+            state.isPlaying = false;
+            state.time = parseFloat(scrubber.value);
+            document.getElementById('playIcon').classList.remove('hidden');
+            document.getElementById('pauseIcon').classList.add('hidden');
+        });
+
+        window.onload = () => { resize(); requestAnimationFrame(update); };
+        window.addEventListener('resize', resize);
+    </script>
+</body>
+</html>

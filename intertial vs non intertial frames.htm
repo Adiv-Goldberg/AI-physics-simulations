@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Momentum Paradox Simulation</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #020617; }
+        /* Custom scrollbar for sliders */
+        input[type=range] {
+            -webkit-appearance: none; 
+            background: transparent; 
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #cbd5e1;
+            cursor: pointer;
+            margin-top: -6px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+        input[type=range]:focus {
+            outline: none; 
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- Inline Icons ---
+        const Play = ({ size = 24, fill = "none", className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const Pause = ({ size = 24, fill = "none", className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const RotateCcw = ({ size = 24, className = "" }) => (
+            <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+                <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+            </svg>
+        );
+
+        const MomentumParadox = () => {
+            // ---------------------------------------------------------------------------
+            // State & Config
+            // ---------------------------------------------------------------------------
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [viewMode, setViewMode] = useState('dual'); 
+            const [timeIndex, setTimeIndex] = useState(0);
+            const [simVersion, setSimVersion] = useState(0); // Trigger redraw after physics calc
+            
+            // Physics Parameters
+            const [exhaustVelocity, setExhaustVelocity] = useState(20);
+            const [accelerationParam, setAccelerationParam] = useState(0.8); 
+
+            // Constants
+            const MAX_STEPS = 1000;
+            const DT = 0.5; 
+            const INITIAL_ROCKET_MASS = 100;
+            const DRY_MASS = 30;
+            const EARTH_MASS_VISUAL = 100;
+            const C_LIMIT = 80; 
+            const INITIAL_VELOCITY = 2; 
+
+            // Refs
+            const requestRef = useRef();
+            const canvasRefEarth = useRef(null);
+            const canvasRefRocket = useRef(null);
+            const trajectoryRef = useRef([]);
+
+            // ---------------------------------------------------------------------------
+            // Physics Engine (Trajectory Pre-calculation)
+            // ---------------------------------------------------------------------------
+            useEffect(() => {
+                const trajectory = [];
+                let currentPos = 0; 
+                let currentVel = INITIAL_VELOCITY; 
+                let currentMass = INITIAL_ROCKET_MASS;
+                const burnRate = accelerationParam * 0.5;
+                
+                const exhaustEmissions = []; 
+
+                for (let i = 0; i <= MAX_STEPS; i++) {
+                    // Linear P = mv
+                    trajectory.push({
+                        pos: currentPos,
+                        vel: currentVel,
+                        mass: currentMass,
+                        exhausts: [...exhaustEmissions] 
+                    });
+
+                    if (currentMass > DRY_MASS) {
+                        const dm = burnRate * DT; 
+                        const actualDm = (currentMass - dm < DRY_MASS) ? (currentMass - DRY_MASS) : dm;
+                        
+                        if (actualDm > 0) {
+                            const thrust = actualDm * exhaustVelocity;
+                            const acceleration = thrust / currentMass;
+                            
+                            let newVel = currentVel + acceleration * DT;
+                            if (newVel >= C_LIMIT * 0.995) newVel = C_LIMIT * 0.995;
+                            
+                            currentVel = newVel;
+                            currentPos += currentVel * DT;
+                            currentMass -= actualDm;
+
+                            if (i % 4 === 0) { 
+                                exhaustEmissions.push({
+                                    birthTimeIndex: i,
+                                    relativeVel: -exhaustVelocity, 
+                                    mass: actualDm * 4,
+                                });
+                            }
+                        } else {
+                            currentPos += currentVel * DT;
+                        }
+                    } else {
+                        currentPos += currentVel * DT;
+                    }
+                }
+                
+                trajectoryRef.current = trajectory;
+                if (timeIndex >= MAX_STEPS) setTimeIndex(MAX_STEPS);
+                
+                // Force a re-render now that data is ready
+                setSimVersion(v => v + 1);
+                
+            }, [exhaustVelocity, accelerationParam]);
+
+            // ---------------------------------------------------------------------------
+            // Animation Loop
+            // ---------------------------------------------------------------------------
+            useEffect(() => {
+                if (isPlaying) {
+                    requestRef.current = requestAnimationFrame(animate);
+                }
+                return () => cancelAnimationFrame(requestRef.current);
+            }, [isPlaying]);
+
+            const animate = () => {
+                setTimeIndex(prev => {
+                    if (prev >= MAX_STEPS - 1) {
+                        setIsPlaying(false);
+                        return prev;
+                    }
+                    return prev + 2; 
+                });
+                if (isPlaying) requestRef.current = requestAnimationFrame(animate);
+            };
+
+            // ---------------------------------------------------------------------------
+            // Rendering Helpers
+            // ---------------------------------------------------------------------------
+            const drawRocketSprite = (ctx, x, y, isEngineOn) => {
+                ctx.save();
+                ctx.translate(x, y);
+
+                // Body
+                ctx.fillStyle = '#e2e8f0'; 
+                ctx.beginPath();
+                ctx.ellipse(0, 0, 35, 12, 0, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.strokeStyle = '#94a3b8';
+                ctx.lineWidth = 1;
+                ctx.stroke();
+
+                // Fins
+                ctx.fillStyle = '#ef4444'; 
+                ctx.beginPath(); ctx.moveTo(-20, -5); ctx.lineTo(-40, -20); ctx.lineTo(-10, -5); ctx.fill();
+                ctx.beginPath(); ctx.moveTo(-20, 5); ctx.lineTo(-40, 20); ctx.lineTo(-10, 5); ctx.fill();
+
+                // Window
+                ctx.fillStyle = '#0ea5e9'; 
+                ctx.beginPath(); ctx.arc(15, -4, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.fillStyle = '#fff'; 
+                ctx.beginPath(); ctx.arc(17, -5, 1.5, 0, Math.PI * 2); ctx.fill();
+
+                // Nozzle
+                ctx.fillStyle = '#475569'; 
+                ctx.beginPath(); ctx.moveTo(-32, -6); ctx.lineTo(-38, -8); ctx.lineTo(-38, 8); ctx.lineTo(-32, 6); ctx.fill();
+
+                // Flame
+                if (isEngineOn) {
+                    ctx.fillStyle = '#f59e0b'; 
+                    ctx.globalAlpha = 0.8 + Math.random() * 0.2;
+                    ctx.beginPath();
+                    ctx.moveTo(-38, -5); ctx.lineTo(-65 - Math.random()*20, 0); ctx.lineTo(-38, 5); ctx.fill();
+                    ctx.fillStyle = '#fff'; ctx.globalAlpha = 0.5;
+                    ctx.beginPath(); ctx.moveTo(-38, -2); ctx.lineTo(-50 - Math.random()*10, 0); ctx.lineTo(-38, 2); ctx.fill();
+                    ctx.globalAlpha = 1.0;
+                }
+                ctx.restore();
+            };
+
+            const drawArrow = (ctx, startX, startY, val, labelColor, label) => {
+                if (Math.abs(val) < 0.1) return; 
+                
+                const dir = Math.sign(val);
+                const mag = Math.abs(val);
+                
+                // Linear Growth Scaling
+                const scaleFactor = 0.15; 
+                const visualLen = Math.min(mag * scaleFactor, 1200) * dir;
+                
+                if (Math.abs(visualLen) < 3) return;
+
+                ctx.save();
+                ctx.shadowBlur = 0;
+                ctx.lineCap = "round";
+                
+                // --- Shaft ---
+                // Black Outline
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(startX + visualLen, startY);
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 10; 
+                ctx.stroke();
+
+                // White Fill
+                ctx.beginPath();
+                ctx.moveTo(startX, startY);
+                ctx.lineTo(startX + visualLen, startY);
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 6; 
+                ctx.stroke();
+
+                // --- Arrowhead ---
+                const headSize = 18; 
+                const endX = startX + visualLen;
+                
+                ctx.beginPath();
+                ctx.moveTo(endX, startY);
+                ctx.lineTo(endX - (headSize * dir), startY - headSize/1.5);
+                ctx.lineTo(endX - (headSize * dir), startY + headSize/1.5);
+                ctx.closePath();
+                
+                ctx.fillStyle = 'white';
+                ctx.fill();
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = 'black';
+                ctx.stroke();
+
+                // --- Label ---
+                ctx.font = 'bold 18px monospace'; 
+                const text = `${label}`;
+                const metrics = ctx.measureText(text);
+                const tx = startX + visualLen / 2 - metrics.width / 2;
+                const labelY = startY - 20;
+
+                // Background box
+                ctx.fillStyle = labelColor; 
+                ctx.globalAlpha = 0.3; 
+                ctx.fillRect(tx - 6, labelY - 14, metrics.width + 12, 20);
+                ctx.globalAlpha = 1.0;
+                
+                // Text with outline
+                ctx.lineWidth = 3;
+                ctx.strokeStyle = 'black';
+                ctx.strokeText(text, tx, labelY);
+                ctx.fillStyle = 'white';
+                ctx.fillText(text, tx, labelY);
+                
+                ctx.restore();
+            };
+
+            const drawScene = (ctx, width, height, frameType) => {
+                // Return if trajectory isn't ready
+                if (!trajectoryRef.current || !trajectoryRef.current[Math.floor(timeIndex)]) return;
+                
+                ctx.clearRect(0, 0, width, height);
+
+                // --- ZOOM ---
+                ctx.save();
+                const zoom = 0.6;
+                ctx.translate(width/2, height/2);
+                ctx.scale(zoom, zoom);
+                ctx.translate(-width/2, -height/2);
+                
+                const state = trajectoryRef.current[Math.floor(timeIndex)];
+                const groundY = height / 2;
+
+                const earthScreenX = width * 0.15;
+                const rocketScreenX = width * 0.85;
+                const rocketRadius = 35; 
+                const earthRadius = 30;
+
+                // --- Background ---
+                ctx.fillStyle = '#FFFFFF';
+                const starOffset = frameType === 'rocket' ? state.pos : 0;
+                const starFieldWidth = width * (1/zoom);
+                
+                for (let i = -2000; i < 6000; i += 150) {
+                    let starX = (i - starOffset * 0.5) % (starFieldWidth);
+                    if (starX < -500) starX += starFieldWidth;
+                    const starY = groundY + (i % 600) - 300;
+                    ctx.globalAlpha = 0.3;
+                    ctx.beginPath();
+                    ctx.arc(starX, starY, (i%3 === 0 ? 1.5 : 1) / zoom, 0, Math.PI*2); 
+                    ctx.fill();
+                }
+                ctx.globalAlpha = 1.0;
+
+                // Grid
+                ctx.strokeStyle = '#334155';
+                ctx.lineWidth = 1 / zoom; 
+                ctx.beginPath(); ctx.moveTo(-2000, groundY); ctx.lineTo(width + 2000, groundY); ctx.stroke();
+
+                // --- Sprites ---
+                
+                // Earth
+                ctx.beginPath();
+                ctx.fillStyle = '#3b82f6'; 
+                ctx.shadowColor = '#3b82f6'; ctx.shadowBlur = 15;
+                ctx.arc(earthScreenX, groundY, earthRadius, 0, Math.PI * 2); ctx.fill();
+                ctx.shadowBlur = 0;
+                ctx.fillStyle = '#1d4ed8'; 
+                ctx.beginPath(); ctx.arc(earthScreenX - 10, groundY - 10, 8, 0, Math.PI*2); ctx.fill();
+                ctx.beginPath(); ctx.arc(earthScreenX + 15, groundY + 5, 6, 0, Math.PI*2); ctx.fill();
+
+                ctx.fillStyle = '#93c5fd';
+                ctx.textAlign = 'center';
+                ctx.font = `bold 24px sans-serif`; 
+                ctx.fillText("EARTH", earthScreenX, groundY + 65);
+
+                // Rocket
+                const isEngineOn = state.mass > DRY_MASS && timeIndex < MAX_STEPS;
+                drawRocketSprite(ctx, rocketScreenX, groundY, isEngineOn);
+                
+                ctx.fillStyle = '#fbcfe8';
+                ctx.fillText("ROCKET", rocketScreenX, groundY - 55);
+
+                // Exhaust
+                state.exhausts.forEach(p => {
+                    const age = (timeIndex - p.birthTimeIndex) * DT;
+                    const opacity = Math.max(0, 1 - (age / 40)); 
+                    if (opacity <= 0) return;
+                    const visualOffset = p.relativeVel * age; 
+                    const pScreenX = rocketScreenX + visualOffset; 
+                    const tailX = pScreenX - 35;
+
+                    ctx.globalAlpha = opacity;
+                    ctx.fillStyle = '#cbd5e1'; 
+                    ctx.beginPath();
+                    const size = 3 + (age * 0.1); 
+                    ctx.arc(tailX, groundY, size, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+                ctx.globalAlpha = 1.0;
+
+                // --- Vectors ---
+                let p_rocket, p_exhaust, p_earth;
+                const earthCenter = earthScreenX;
+                const rocketNose = rocketScreenX + rocketRadius; 
+                const rocketTail = rocketScreenX - rocketRadius;
+
+                if (frameType === 'earth') {
+                    p_rocket = state.mass * state.vel;
+                    p_exhaust = -p_rocket; 
+                    p_earth = 0;
+
+                    drawArrow(ctx, rocketNose, groundY, p_rocket, '#ec4899', `P_rocket`);
+                    drawArrow(ctx, rocketTail, groundY, p_exhaust, '#94a3b8', `P_exhaust`);
+                } else {
+                    const v_frame = state.vel;
+                    p_rocket = 0;
+                    p_earth = EARTH_MASS_VISUAL * -v_frame;
+                    
+                    const totalExhaustMass = (INITIAL_ROCKET_MASS - state.mass);
+                    const p_exhaust_earth = -(state.mass * state.vel); 
+                    p_exhaust = p_exhaust_earth - (totalExhaustMass * v_frame);
+
+                    drawArrow(ctx, earthCenter, groundY, p_earth, '#3b82f6', `P_earth`);
+                    drawArrow(ctx, rocketTail, groundY, p_exhaust, '#94a3b8', `P_exhaust`);
+                }
+
+                ctx.restore(); 
+            };
+
+            useEffect(() => {
+                const render = () => {
+                    if (canvasRefEarth.current) {
+                        const ctx = canvasRefEarth.current.getContext('2d');
+                        const { width, height } = canvasRefEarth.current.getBoundingClientRect();
+                        canvasRefEarth.current.width = width;
+                        canvasRefEarth.current.height = height;
+                        drawScene(ctx, width, height, 'earth');
+                    }
+                    if (canvasRefRocket.current) {
+                        const ctx = canvasRefRocket.current.getContext('2d');
+                        const { width, height } = canvasRefRocket.current.getBoundingClientRect();
+                        canvasRefRocket.current.width = width;
+                        canvasRefRocket.current.height = height;
+                        drawScene(ctx, width, height, 'rocket');
+                    }
+                };
+                render();
+            }, [timeIndex, viewMode, simVersion]); // Re-render when simVersion changes
+
+            return (
+                <div className="flex flex-col h-screen w-full bg-slate-950 text-slate-200 font-sans selection:bg-purple-500 selection:text-white overflow-hidden">
+                
+                {/* Header */}
+                <div className="flex items-center justify-between px-6 py-4 border-b border-slate-800 bg-slate-900/50 backdrop-blur">
+                    <div>
+                    <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
+                        Momentum Paradox
+                    </h1>
+                    <p className="text-xs text-slate-400 mt-1">
+                        Visualizing Conservation in Inertial vs. Non-Inertial Frames
+                    </p>
+                    </div>
+                    
+                    <div className="flex bg-slate-900 p-1 rounded-lg border border-slate-800">
+                    {['earth', 'dual', 'rocket'].map((mode) => (
+                        <button
+                        key={mode}
+                        onClick={() => setViewMode(mode)}
+                        className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                            viewMode === mode 
+                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/20' 
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                        }`}
+                        >
+                        {mode.charAt(0).toUpperCase() + mode.slice(1)} View
+                        </button>
+                    ))}
+                    </div>
+                </div>
+
+                {/* Main Canvas Area */}
+                <div className="flex-1 relative flex overflow-hidden">
+                    
+                    {/* Earth Frame */}
+                    {(viewMode === 'earth' || viewMode === 'dual') && (
+                    <div className={`relative flex-1 border-r border-slate-800 flex flex-col ${viewMode === 'dual' ? 'w-1/2' : 'w-full'}`}>
+                        <div className="absolute top-4 left-4 z-10 pointer-events-none">
+                        <h2 className="text-blue-400 font-bold text-lg flex items-center gap-2">
+                            Earth Frame
+                            <span className="px-2 py-0.5 bg-blue-500/10 text-blue-400 text-[10px] rounded border border-blue-500/20">INERTIAL</span>
+                        </h2>
+                        </div>
+                        <canvas ref={canvasRefEarth} className="w-full h-full block bg-slate-950/50" />
+                        
+                        {trajectoryRef.current[Math.floor(timeIndex)] && (
+                            <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none">
+                                <div className="bg-slate-900/80 p-3 rounded border border-slate-800 backdrop-blur-sm">
+                                    <div className="text-xs font-mono space-y-1">
+                                        <div className="text-pink-400">Rocket Momentum: +{(trajectoryRef.current[Math.floor(timeIndex)].mass * trajectoryRef.current[Math.floor(timeIndex)].vel).toFixed(0)}</div>
+                                        <div className="text-slate-400">Exhaust Momentum: {(-(trajectoryRef.current[Math.floor(timeIndex)].mass * trajectoryRef.current[Math.floor(timeIndex)].vel)).toFixed(0)}</div>
+                                        <div className="border-t border-slate-700 mt-1 pt-1 text-green-400 font-bold">Net Momentum: 0 (Conserved)</div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    )}
+
+                    {/* Rocket Frame */}
+                    {(viewMode === 'rocket' || viewMode === 'dual') && (
+                    <div className={`relative flex-1 flex flex-col ${viewMode === 'dual' ? 'w-1/2' : 'w-full'}`}>
+                        <div className="absolute top-4 left-4 z-10 pointer-events-none">
+                        <h2 className="text-pink-400 font-bold text-lg flex items-center gap-2">
+                            Rocket Frame
+                            <span className="px-2 py-0.5 bg-pink-500/10 text-pink-400 text-[10px] rounded border border-pink-500/20">NON-INERTIAL</span>
+                        </h2>
+                        </div>
+                        <canvas ref={canvasRefRocket} className="w-full h-full block bg-slate-950/50" />
+                        
+                        {trajectoryRef.current[Math.floor(timeIndex)] && (
+                            <div className="absolute bottom-4 left-4 right-4 flex justify-between items-end pointer-events-none">
+                                <div className="bg-slate-900/80 p-3 rounded border border-slate-800 backdrop-blur-sm">
+                                    <div className="text-xs font-mono space-y-1">
+                                        <div className="text-blue-400">Earth Momentum: {(EARTH_MASS_VISUAL * -trajectoryRef.current[Math.floor(timeIndex)].vel).toFixed(0)}</div>
+                                        <div className="text-slate-400">Exhaust Momentum: {(-(trajectoryRef.current[Math.floor(timeIndex)].mass * trajectoryRef.current[Math.floor(timeIndex)].vel) - ((INITIAL_ROCKET_MASS - trajectoryRef.current[Math.floor(timeIndex)].mass) * trajectoryRef.current[Math.floor(timeIndex)].vel)).toFixed(0)}</div>
+                                        <div className="border-t border-slate-700 mt-1 pt-1 text-red-400 font-bold">
+                                            Net Momentum: {(-(EARTH_MASS_VISUAL + INITIAL_ROCKET_MASS) * trajectoryRef.current[Math.floor(timeIndex)].vel).toFixed(0)} (Not Conserved)
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                    )}
+                </div>
+
+                {/* Control Bar */}
+                <div className="h-28 bg-slate-900 border-t border-slate-800 px-6 flex items-center gap-6">
+                    
+                    <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => setIsPlaying(!isPlaying)}
+                        className="w-12 h-12 rounded-full bg-purple-600 hover:bg-purple-500 flex items-center justify-center text-white shadow-lg shadow-purple-900/40 transition-all active:scale-95"
+                    >
+                        {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" className="ml-1"/>}
+                    </button>
+                    <button 
+                        onClick={() => { setIsPlaying(false); setTimeIndex(0); }}
+                        className="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 flex items-center justify-center text-slate-400 transition-all"
+                    >
+                        <RotateCcw size={16} />
+                    </button>
+                    </div>
+
+                    <div className="flex-1 flex flex-col gap-2">
+                        <div className="flex justify-between text-xs text-slate-400 uppercase tracking-wider font-semibold">
+                        <span>Time Scrub</span>
+                        <span>{timeIndex < MAX_STEPS ? 'Accelerating' : 'Drifting'}</span>
+                        </div>
+                        <input 
+                            type="range" min="0" max={MAX_STEPS} step="1"
+                            value={timeIndex}
+                            onChange={(e) => { setIsPlaying(false); setTimeIndex(parseInt(e.target.value)); }}
+                            className="w-full h-3 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500 hover:accent-purple-400"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-500 font-mono">
+                        <span>T=0</span>
+                        <span>T={MAX_STEPS}</span>
+                        </div>
+                    </div>
+
+                    <div className="flex gap-6 border-l border-slate-800 pl-6">
+                        <div className="flex flex-col gap-2 w-40">
+                        <div className="flex justify-between text-xs text-slate-300 font-medium">
+                            <span>Rocket Accel</span>
+                            <span className="text-yellow-400">{(accelerationParam * 10).toFixed(1)}g</span>
+                        </div>
+                        <input 
+                            type="range" min="0.1" max="1.5" step="0.1"
+                            value={accelerationParam}
+                            onChange={(e) => { setAccelerationParam(parseFloat(e.target.value)); setTimeIndex(0); setIsPlaying(false); }}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-yellow-500"
+                        />
+                        </div>
+
+                        <div className="flex flex-col gap-2 w-32">
+                        <div className="flex justify-between text-xs text-slate-300 font-medium">
+                            <span>Exhaust Vel</span>
+                            <span className="text-purple-400">{exhaustVelocity.toFixed(1)}c</span>
+                        </div>
+                        <input 
+                            type="range" min="1" max="50" step="1"
+                            value={exhaustVelocity}
+                            onChange={(e) => { setExhaustVelocity(parseFloat(e.target.value)); setTimeIndex(0); setIsPlaying(false); }}
+                            className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                        />
+                        </div>
+                    </div>
+
+                </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<MomentumParadox />);
+    </script>
+</body>
+</html>
