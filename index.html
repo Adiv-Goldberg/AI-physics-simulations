@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Physics Simulations</title>
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="https://cdn-icons-png.flaticon.com/512/7614/7614875.png">
     <!-- Tailwind CSS for styling -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- Font Awesome for icons -->
@@ -23,6 +25,10 @@
         ::-webkit-scrollbar-thumb:hover {
             background: #475569; 
         }
+        /* Custom scrollbar for dropdowns */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 6px;
+        }
         .bg-pattern {
             background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px);
             background-size: 20px 20px;
@@ -36,58 +42,84 @@
     <div class="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] h-[300px] bg-blue-600/20 blur-[120px] rounded-full pointer-events-none z-0"></div>
 
     <!-- Header Section -->
-    <header class="relative z-10 pt-16 pb-8 px-4 text-center">
-        <div class="inline-flex items-center justify-center p-3 bg-blue-500/10 rounded-2xl mb-4 border border-blue-500/20">
-            <i class="fas fa-atom text-3xl text-blue-400"></i>
-        </div>
-        <h1 class="text-4xl md:text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400 tracking-tight mb-4">
-            AI Physics Simulations
+    <header class="relative z-10 pt-20 pb-10 px-4 text-center">
+        <h1 class="text-5xl md:text-6xl font-black text-white tracking-tight mb-4 drop-shadow-lg">
+            AI Physics <span class="text-blue-500">Simulations</span>
         </h1>
-        <p class="text-slate-400 max-w-2xl mx-auto text-lg">
-            An interactive database of physics experiments and simulations powered by AI. Explore, learn, and visualize core scientific concepts.
+        <p class="text-slate-300 max-w-2xl mx-auto text-lg font-light">
+            Explore, learn, and visualize core scientific concepts through an interactive database of physics experiments.
         </p>
     </header>
 
     <!-- Controls Section: Search, Filter, Sort -->
-    <section class="relative z-10 max-w-7xl mx-auto w-full px-4 mb-8">
-        <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700 p-4 rounded-2xl shadow-xl flex flex-col md:flex-row gap-4">
+    <section class="relative z-50 max-w-7xl mx-auto w-full px-4 mb-8">
+        <div class="bg-slate-800/80 backdrop-blur-md border border-slate-700 p-4 rounded-2xl shadow-xl grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <!-- Search -->
-            <div class="relative flex-grow">
+            <div class="relative w-full z-10">
                 <div class="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
                     <i class="fas fa-search text-slate-400"></i>
                 </div>
-                <input type="text" id="searchInput" class="w-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-slate-500 transition-all" placeholder="Search simulations, units, or keywords...">
+                <input type="text" id="searchInput" class="w-full h-full pl-11 pr-4 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-white placeholder-slate-500 transition-all" placeholder="Search simulations...">
             </div>
 
-            <div class="flex flex-col sm:flex-row gap-4">
-                <!-- Filter by Unit -->
-                <div class="relative min-w-[200px]">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+            <!-- Filter by Unit (Searchable Custom Dropdown) -->
+            <div class="relative w-full z-30" id="unitDropdownContainer">
+                <button id="unitDropdownBtn" class="w-full pl-4 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl text-left text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all flex justify-between items-center h-full">
+                    <span class="flex items-center gap-2 overflow-hidden">
                         <i class="fas fa-filter text-slate-400 text-sm"></i>
-                    </div>
-                    <select id="filterSelect" class="w-full pl-9 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-white appearance-none cursor-pointer transition-all">
-                        <option value="all">All Units</option>
-                        <!-- Options populated via JS -->
-                    </select>
+                        <span id="unitDropdownLabel" class="truncate">All Units</span>
+                    </span>
                     <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                         <i class="fas fa-chevron-down text-slate-400 text-xs"></i>
+                    </div>
+                </button>
+                
+                <div id="unitDropdownMenu" class="hidden absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+                    <div class="p-2 border-b border-slate-700">
+                        <input type="text" id="unitSearchInput" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search units...">
+                    </div>
+                    <div id="unitList" class="max-h-60 overflow-y-auto p-1 custom-scrollbar bg-slate-800">
+                        <!-- Options populated via JS -->
                     </div>
                 </div>
+            </div>
 
-                <!-- Sort -->
-                <div class="relative min-w-[200px]">
-                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <i class="fas fa-sort text-slate-400 text-sm"></i>
-                    </div>
-                    <select id="sortSelect" class="w-full pl-9 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-white appearance-none cursor-pointer transition-all">
-                        <option value="name-asc">Name (A to Z)</option>
-                        <option value="name-desc">Name (Z to A)</option>
-                        <option value="unit">Group by Unit</option>
-                    </select>
+            <!-- Filter by Subunit (Searchable Custom Dropdown) -->
+            <div class="relative w-full z-20" id="subunitDropdownContainer">
+                <button id="subunitDropdownBtn" class="w-full pl-4 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl text-left text-white focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all flex justify-between items-center h-full">
+                    <span class="flex items-center gap-2 overflow-hidden">
+                        <i class="fas fa-filter text-slate-400 text-sm"></i>
+                        <span id="subunitDropdownLabel" class="truncate">All Subunits</span>
+                    </span>
                     <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
                         <i class="fas fa-chevron-down text-slate-400 text-xs"></i>
                     </div>
+                </button>
+                
+                <div id="subunitDropdownMenu" class="hidden absolute z-50 w-full mt-2 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+                    <div class="p-2 border-b border-slate-700">
+                        <input type="text" id="subunitSearchInput" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Search subunits...">
+                    </div>
+                    <div id="subunitList" class="max-h-60 overflow-y-auto p-1 custom-scrollbar bg-slate-800">
+                        <!-- Options populated via JS -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sort -->
+            <div class="relative w-full z-10">
+                <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <i class="fas fa-sort text-slate-400 text-sm"></i>
+                </div>
+                <select id="sortSelect" class="w-full h-full pl-9 pr-10 py-3 bg-slate-900 border border-slate-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-white appearance-none cursor-pointer transition-all">
+                    <option value="name-asc">Name (A to Z)</option>
+                    <option value="name-desc">Name (Z to A)</option>
+                    <option value="unit">Sort by Units</option>
+                    <option value="subunit">Sort by Subunits</option>
+                </select>
+                <div class="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                    <i class="fas fa-chevron-down text-slate-400 text-xs"></i>
                 </div>
             </div>
         </div>
@@ -119,16 +151,13 @@
     </main>
 
     <!-- Footer -->
-    <footer class="relative z-10 mt-auto py-8 text-center text-xs text-slate-500 border-t border-slate-800/50 bg-slate-900/50">
-        <div class="flex items-center justify-center gap-4 mb-2">
-            <a href="https://github.com/Adiv-Goldberg/AI-physics-simulations" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 hover:text-blue-400 transition-colors bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-blue-500/50">
-                <i class="fab fa-github text-sm"></i> GitHub Repository
-            </a>
-            <a href="https://docs.google.com/spreadsheets/d/1jO-1YXx5C-3xrgF-Zg79ytjvVA9bsRr3Hb1q14SIXYo/edit?usp=sharing" target="_blank" rel="noopener noreferrer" class="flex items-center gap-2 hover:text-emerald-400 transition-colors bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-700 hover:border-emerald-500/50">
-                <i class="fas fa-file-excel text-sm"></i> Data Source
-            </a>
-        </div>
-        <p class="mt-4">Created for educational purposes. Explore the laws of physics interactively.</p>
+    <footer class="fixed bottom-3 right-4 z-50 text-xs text-slate-600 flex flex-col items-end gap-1.5 opacity-40 hover:opacity-100 transition-opacity duration-300">
+        <a href="https://github.com/Adiv-Goldberg/AI-physics-simulations" target="_blank" rel="noopener noreferrer" class="hover:text-slate-300 transition-colors flex items-center gap-1.5">
+            GitHub <i class="fab fa-github"></i>
+        </a>
+        <a href="https://docs.google.com/spreadsheets/d/1jO-1YXx5C-3xrgF-Zg79ytjvVA9bsRr3Hb1q14SIXYo/edit?usp=sharing" target="_blank" rel="noopener noreferrer" class="hover:text-slate-300 transition-colors flex items-center gap-1.5">
+            Data Source <i class="fas fa-file-excel"></i>
+        </a>
     </footer>
 
     <script>
@@ -136,11 +165,22 @@
         const SHEET_ID = '1jO-1YXx5C-3xrgF-Zg79ytjvVA9bsRr3Hb1q14SIXYo';
         const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv`;
         
+        // Define your Sheet 2 name here for fetching units and subunits
+        const SHEET2_NAME = 'unit list'; 
+        const SHEET2_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET2_NAME)}`;
+        
         // A simple, geometric SVG placeholder if images are missing or broken
         const fallbackImage = `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100%25' height='100%25' viewBox='0 0 800 400'%3E%3Crect fill='%231e293b' width='800' height='400'/%3E%3Cg fill='none' stroke='%23334155' stroke-width='2'%3E%3Cpath d='M769 229L1037 260.9M927 880L731 737 520 660 309 538 40 599 295 764 126.5 879.5 40 599-197 493 102 382-31 229 126.5 79.5-69-63'/%3E%3Cpath d='M-31 229L237 261 390 382 603 493 308.5 537.5 101.5 381.5M370 905L295 764'/%3E%3Cpath d='M520 660L578 842 731 737 840 599 603 493 520 660 295 764 309 538 390 382 539 269 769 229 577.5 41.5 370 105 295 -36 126.5 79.5 237 261 102 382 40 599 -69 737 127 880'/%3E%3C/g%3E%3Cg fill='%23475569'%3E%3Ccircle cx='769' cy='229' r='5'/%3E%3Ccircle cx='539' cy='269' r='5'/%3E%3Ccircle cx='603' cy='493' r='5'/%3E%3Ccircle cx='731' cy='737' r='5'/%3E%3Ccircle cx='520' cy='660' r='5'/%3E%3Ccircle cx='309' cy='538' r='5'/%3E%3Ccircle cx='295' cy='764' r='5'/%3E%3Ccircle cx='40' cy='599' r='5'/%3E%3Ccircle cx='102' cy='382' r='5'/%3E%3C/g%3E%3C/svg%3E`;
 
         let allSimulations = [];
         let filteredSimulations = [];
+        
+        let allUnitsSet = new Set();
+        let allSubUnitsSet = new Set();
+        
+        // Filter state
+        let currentUnitFilter = 'all';
+        let currentSubunitFilter = 'all';
 
         // DOM Elements
         const loadingEl = document.getElementById('loading');
@@ -148,7 +188,36 @@
         const emptyState = document.getElementById('emptyState');
         const searchInput = document.getElementById('searchInput');
         const sortSelect = document.getElementById('sortSelect');
-        const filterSelect = document.getElementById('filterSelect');
+
+        // Handles properly splitting comma-separated strings that might contain quotes
+        function parseCommaList(str) {
+            if (!str) return [];
+            let result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < str.length; i++) {
+                let char = str[i];
+                if (char === '"') {
+                    inQuotes = !inQuotes;
+                    current += char; 
+                } else if (char === ',' && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            if (current) result.push(current.trim());
+            
+            return result.filter(Boolean).map(s => {
+                let val = s;
+                if (val.startsWith('"') && val.endsWith('"')) {
+                    val = val.slice(1, -1).trim();
+                }
+                return val;
+            });
+        }
 
         // Robust CSV Parser
         function parseCSV(text) {
@@ -188,27 +257,136 @@
             return result;
         }
 
+        // Setup Custom Searchable Dropdown
+        function setupDropdown(containerId, btnId, labelId, menuId, searchId, listId, dataSet, filterType) {
+            const container = document.getElementById(containerId);
+            const btn = document.getElementById(btnId);
+            const label = document.getElementById(labelId);
+            const menu = document.getElementById(menuId);
+            const searchInput = document.getElementById(searchId);
+            const list = document.getElementById(listId);
+
+            const isUnit = filterType === 'unit';
+            let selectedValue = 'all';
+
+            const renderList = (filterText = '') => {
+                list.innerHTML = '';
+                
+                // "All" Option
+                if ('all'.includes(filterText.toLowerCase())) {
+                    const allOpt = document.createElement('button');
+                    const isSelected = selectedValue === 'all';
+                    allOpt.className = `w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${isSelected ? 'bg-blue-600/30 text-blue-400 font-bold' : 'text-slate-300 hover:bg-slate-700'}`;
+                    allOpt.textContent = isUnit ? 'All Units' : 'All Subunits';
+                    allOpt.onclick = () => selectOption('all', isUnit ? 'All Units' : 'All Subunits');
+                    list.appendChild(allOpt);
+                }
+
+                // Removed .sort() to preserve Google Sheet order
+                const dataArray = [...dataSet];
+                dataArray.forEach(item => {
+                    if (item.toLowerCase().includes(filterText.toLowerCase())) {
+                        const opt = document.createElement('button');
+                        const isSelected = selectedValue === item;
+                        opt.className = `w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${isSelected ? 'bg-blue-600/30 text-blue-400 font-bold' : 'text-slate-300 hover:bg-slate-700'}`;
+                        opt.textContent = item;
+                        opt.onclick = () => selectOption(item, item);
+                        list.appendChild(opt);
+                    }
+                });
+            };
+
+            const selectOption = (val, text) => {
+                selectedValue = val;
+                label.textContent = text;
+                menu.classList.add('hidden');
+                searchInput.value = ''; 
+                
+                if (isUnit) {
+                    currentUnitFilter = val;
+                } else {
+                    currentSubunitFilter = val;
+                }
+                
+                renderList(); // re-render to update selected styling
+                processData(); // update grid
+            };
+
+            btn.onclick = (e) => {
+                e.stopPropagation();
+                const isHidden = menu.classList.contains('hidden');
+                
+                // close other menus
+                document.getElementById('unitDropdownMenu').classList.add('hidden');
+                document.getElementById('subunitDropdownMenu').classList.add('hidden');
+
+                if (isHidden) {
+                    menu.classList.remove('hidden');
+                    searchInput.focus();
+                    renderList(searchInput.value);
+                }
+            };
+
+            searchInput.oninput = (e) => renderList(e.target.value);
+            searchInput.onclick = (e) => e.stopPropagation();
+
+            document.addEventListener('click', (e) => {
+                if (!container.contains(e.target)) {
+                    menu.classList.add('hidden');
+                }
+            });
+
+            // Initial render
+            renderList();
+        }
+
         // Initialize App
         async function init() {
             try {
+                // Fetch main data
                 const response = await fetch(CSV_URL);
                 if (!response.ok) throw new Error('Network response was not ok');
                 const csvText = await response.text();
-                
                 const data = parseCSV(csvText);
                 
-                // Skip header (row 0), extract data mapping it to columns A through F
-                allSimulations = data.slice(1).filter(row => row.length > 0 && row[0] && row[0].trim() !== '').map(row => ({
-                    name: row[0] || '',
-                    description: row[1] || '',
-                    imageUrl: row[2] || '',
-                    htmlFilename: row[3] || '#',
-                    unit: row[4] || '',
-                    subUnit: row[5] || ''
-                }));
+                // Fetch predefined units/subunits from Sheet 2
+                try {
+                    const sheet2Response = await fetch(SHEET2_URL);
+                    if (sheet2Response.ok) {
+                        const sheet2Text = await sheet2Response.text();
+                        const sheet2Data = parseCSV(sheet2Text);
+                        
+                        sheet2Data.forEach((row, index) => {
+                            if (index === 0 && row[0]?.toLowerCase().includes('unit')) return; // skip header
+                            if (row[0] && row[0].trim()) allUnitsSet.add(row[0].trim());
+                            if (row[1] && row[1].trim()) allSubUnitsSet.add(row[1].trim());
+                        });
+                    }
+                } catch (e) {
+                    console.warn("Could not fetch Sheet 2. Using units directly from main data.");
+                }
 
-                // Populate Unit Filter
-                populateFilter();
+                // Skip header (row 0), extract data mapping it to columns A through F
+                allSimulations = data.slice(1).filter(row => row.length > 0 && row[0] && row[0].trim() !== '').map(row => {
+                    const parsedUnits = parseCommaList(row[4] || '');
+                    const parsedSubUnits = parseCommaList(row[5] || '');
+                    
+                    parsedUnits.forEach(u => allUnitsSet.add(u));
+                    parsedSubUnits.forEach(s => allSubUnitsSet.add(s));
+
+                    return {
+                        name: row[0] || '',
+                        description: row[1] || '',
+                        imageUrl: row[2] || '',
+                        htmlFilename: row[3] || '#',
+                        units: parsedUnits,
+                        subUnits: parsedSubUnits
+                    };
+                });
+
+                // Setup Custom Dropdowns
+                setupDropdown('unitDropdownContainer', 'unitDropdownBtn', 'unitDropdownLabel', 'unitDropdownMenu', 'unitSearchInput', 'unitList', allUnitsSet, 'unit');
+                setupDropdown('subunitDropdownContainer', 'subunitDropdownBtn', 'subunitDropdownLabel', 'subunitDropdownMenu', 'subunitSearchInput', 'subunitList', allSubUnitsSet, 'subunit');
 
                 // Initial processing
                 processData();
@@ -229,32 +407,22 @@
             }
         }
 
-        function populateFilter() {
-            const units = [...new Set(allSimulations.map(s => s.unit).filter(Boolean))].sort();
-            units.forEach(unit => {
-                const opt = document.createElement('option');
-                opt.value = unit;
-                opt.textContent = unit;
-                filterSelect.appendChild(opt);
-            });
-        }
-
         function processData() {
             const query = searchInput.value.toLowerCase();
             const sortType = sortSelect.value;
-            const filterValue = filterSelect.value;
 
             // Filter
             filteredSimulations = allSimulations.filter(sim => {
                 const matchesSearch = 
                     sim.name.toLowerCase().includes(query) || 
                     sim.description.toLowerCase().includes(query) ||
-                    sim.unit.toLowerCase().includes(query) ||
-                    sim.subUnit.toLowerCase().includes(query);
+                    sim.units.some(u => u.toLowerCase().includes(query)) ||
+                    sim.subUnits.some(s => s.toLowerCase().includes(query));
                 
-                const matchesUnit = filterValue === 'all' || sim.unit === filterValue;
+                const matchesUnit = currentUnitFilter === 'all' || sim.units.includes(currentUnitFilter);
+                const matchesSubunit = currentSubunitFilter === 'all' || sim.subUnits.includes(currentSubunitFilter);
 
-                return matchesSearch && matchesUnit;
+                return matchesSearch && matchesUnit && matchesSubunit;
             });
 
             // Sort
@@ -264,10 +432,15 @@
                 } else if (sortType === 'name-desc') {
                     return b.name.localeCompare(a.name);
                 } else if (sortType === 'unit') {
-                    if (a.unit === b.unit) {
-                        return a.name.localeCompare(b.name);
-                    }
-                    return a.unit.localeCompare(b.unit);
+                    const unitA = a.units[0] || '';
+                    const unitB = b.units[0] || '';
+                    if (unitA === unitB) return a.name.localeCompare(b.name);
+                    return unitA.localeCompare(unitB);
+                } else if (sortType === 'subunit') {
+                    const subA = a.subUnits[0] || '';
+                    const subB = b.subUnits[0] || '';
+                    if (subA === subB) return a.name.localeCompare(b.name);
+                    return subA.localeCompare(subB);
                 }
                 return 0;
             });
@@ -291,30 +464,29 @@
 
             filteredSimulations.forEach(sim => {
                 const card = document.createElement('div');
-                card.className = "bg-slate-800 rounded-2xl overflow-hidden shadow-lg border border-slate-700 flex flex-col group hover:border-blue-500/50 hover:shadow-blue-500/10 transition-all duration-300 transform hover:-translate-y-1";
+                card.className = "bg-slate-800/80 backdrop-blur-sm rounded-2xl overflow-hidden shadow-lg border border-slate-700/50 flex flex-col group hover:border-blue-500/50 hover:shadow-blue-500/10 transition-all duration-300 transform hover:-translate-y-1";
                 
-                // Constructing badges safely
-                let badgesHTML = '';
-                if (sim.unit) {
-                    badgesHTML += `<span class="px-2.5 py-1 bg-blue-900/40 text-blue-300 text-xs font-semibold rounded-lg border border-blue-800/60 truncate max-w-full">${sim.unit}</span>`;
-                }
-                if (sim.subUnit) {
-                    badgesHTML += `<span class="px-2.5 py-1 bg-indigo-900/40 text-indigo-300 text-xs font-semibold rounded-lg border border-indigo-800/60 truncate max-w-full">${sim.subUnit}</span>`;
-                }
+                const unitsHTML = sim.units.length > 0 
+                    ? sim.units.map(u => `<div class="text-blue-400 font-bold uppercase tracking-wider text-xs mb-1">${u}</div>`).join('') 
+                    : `<div class="text-blue-400 font-bold uppercase tracking-wider text-xs mb-1">Uncategorized</div>`;
+                
+                const subUnitsHTML = sim.subUnits.length > 0 
+                    ? sim.subUnits.map(s => `<div class="text-slate-400 text-xs italic mb-1">↳ ${s}</div>`).join('') 
+                    : '';
 
                 card.innerHTML = `
-                    <div class="relative h-48 overflow-hidden bg-slate-900">
-                        <img src="${sim.imageUrl || fallbackImage}" alt="${sim.name}" class="w-full h-full object-cover opacity-90 group-hover:opacity-100 group-hover:scale-105 transition-all duration-500" onerror="this.onerror=null;this.src='${fallbackImage}'" />
-                        <div class="absolute inset-0 bg-gradient-to-t from-slate-800 via-transparent to-transparent"></div>
+                    <div class="relative h-48 bg-slate-900 border-b border-slate-700/50 overflow-hidden">
+                        <img src="${sim.imageUrl || fallbackImage}" alt="${sim.name}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" onerror="this.onerror=null;this.src='${fallbackImage}'" />
                     </div>
                     <div class="p-6 flex flex-col flex-grow">
-                        <div class="flex flex-wrap gap-2 mb-3">
-                            ${badgesHTML}
+                        <div class="mb-4">
+                            ${unitsHTML}
+                            ${subUnitsHTML}
                         </div>
-                        <h3 class="text-xl font-bold text-white mb-2 leading-tight group-hover:text-blue-400 transition-colors">${sim.name || 'Unnamed Simulation'}</h3>
+                        <h3 class="text-xl font-bold text-white mb-2 leading-tight group-hover:text-blue-300 transition-colors">${sim.name || 'Unnamed Simulation'}</h3>
                         <p class="text-slate-400 text-sm mb-6 line-clamp-3 flex-grow leading-relaxed">${sim.description || 'No description provided.'}</p>
                         
-                        <a href="${sim.htmlFilename}" class="block w-full text-center bg-blue-600 hover:bg-blue-500 text-white font-medium py-3 rounded-xl transition-all duration-300 shadow-lg shadow-blue-600/20 hover:shadow-blue-500/40 mt-auto flex items-center justify-center gap-2">
+                        <a href="${sim.htmlFilename}" target="_blank" rel="noopener noreferrer" class="block w-full text-center bg-blue-600/90 hover:bg-blue-500 text-white font-medium py-2.5 rounded-xl transition-all duration-300 shadow-lg shadow-blue-900/20 mt-auto flex items-center justify-center gap-2">
                             <span>Open Simulation</span>
                             <i class="fas fa-arrow-right text-sm"></i>
                         </a>
@@ -327,7 +499,6 @@
         // Event Listeners
         searchInput.addEventListener('input', processData);
         sortSelect.addEventListener('change', processData);
-        filterSelect.addEventListener('change', processData);
 
         // Run
         document.addEventListener('DOMContentLoaded', init);
