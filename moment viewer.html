@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Moment Vector Simulation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --bg-canvas: #0f172a; /* slate-900 */
+            --bg-panel: #000000;  /* Solid black for bottom bar */
+            --border-color: #1e293b; /* slate-800 */
+            --accent-blue: #3b82f6;
+            --accent-red: #ef4444;
+            --accent-green: #22c55e;
+            --accent-yellow: #eab308;
+            --text-main: #f8fafc;
+            --text-muted: #64748b;
+        }
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: var(--bg-canvas); 
+            color: var(--text-main); 
+            font-family: 'Inter', system-ui, sans-serif; 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        /* Top Header overlays canvas */
+        #header-overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%;
+            padding: 1.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            pointer-events: none;
+            z-index: 20;
+        }
+
+        .pointer-events-auto { pointer-events: auto; }
+
+        /* Canvas occupies remaining space naturally */
+        #canvas-wrapper { 
+            flex-grow: 1;
+            position: relative; 
+            width: 100%; 
+            z-index: 10;
+        }
+
+        /* Bottom Dashboard - Designed to fill all space without gaps */
+        #bottom-dashboard { 
+            flex-shrink: 0;
+            background-color: var(--bg-panel);
+            border-top: 1px solid var(--border-color);
+            z-index: 30;
+            display: flex;
+            align-items: stretch;
+            padding: 1rem 1.5rem;
+            gap: 1.5rem;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.8);
+        }
+
+        /* Custom Slider Styling - Minimal and color coded */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            width: 100%;
+            height: 16px;
+            cursor: pointer;
+        }
+        input[type=range]:focus { outline: none; }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 3px;
+            background: #334155;
+            border-radius: 2px;
+            transition: 0.2s;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: white;
+            margin-top: -4.5px;
+            box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transition: 0.1s transform;
+        }
+        input[type=range]::-webkit-slider-thumb:active { transform: scale(1.3); }
+
+        /* Color Modifiers for Sliders */
+        .slider-blue::-webkit-slider-thumb { background: var(--accent-blue); }
+        .slider-blue::-webkit-slider-runnable-track { background: rgba(59, 130, 246, 0.3); }
+        .slider-red::-webkit-slider-thumb { background: var(--accent-red); }
+        .slider-red::-webkit-slider-runnable-track { background: rgba(239, 68, 68, 0.3); }
+        .slider-yellow::-webkit-slider-thumb { background: var(--accent-yellow); }
+        .slider-yellow::-webkit-slider-runnable-track { background: rgba(234, 179, 8, 0.3); }
+        .slider-green::-webkit-slider-thumb { background: var(--accent-green); }
+        .slider-green::-webkit-slider-runnable-track { background: rgba(34, 197, 94, 0.3); }
+
+        /* Seamless Input Textboxes */
+        .seamless-input {
+            appearance: none;
+            background: transparent;
+            border: none;
+            border-bottom: 1px solid #475569;
+            color: white;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.85rem;
+            width: 48px;
+            text-align: center;
+            outline: none;
+            transition: border-color 0.2s, background-color 0.2s;
+            padding: 2px 0;
+            border-radius: 2px 2px 0 0;
+        }
+        .seamless-input:focus { 
+            border-bottom-color: var(--accent-blue); 
+            background-color: rgba(255,255,255,0.05);
+        }
+        .seamless-input::-webkit-outer-spin-button, 
+        .seamless-input::-webkit-inner-spin-button { 
+            -webkit-appearance: none; margin: 0; 
+        }
+
+        /* Toggle Switches */
+        .custom-toggle {
+            position: relative;
+            display: inline-block;
+            width: 36px;
+            height: 18px;
+            flex-shrink: 0;
+        }
+        .custom-toggle input { opacity: 0; width: 0; height: 0; }
+        .toggle-track {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: #334155;
+            transition: .3s;
+            border-radius: 18px;
+        }
+        .toggle-track:before {
+            position: absolute;
+            content: "";
+            height: 14px; width: 14px;
+            left: 2px; bottom: 2px;
+            background-color: white;
+            transition: .3s cubic-bezier(0.4, 0.0, 0.2, 1);
+            border-radius: 50%;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+        }
+        .custom-toggle input:checked + .toggle-track { background-color: var(--accent-blue); }
+        .custom-toggle input:checked + .toggle-track:before { transform: translateX(18px); }
+
+        /* UI Transitions */
+        .row-transition {
+            transition: max-height 0.3s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.3s ease, margin 0.3s ease;
+            max-height: 0;
+            opacity: 0;
+            overflow: hidden;
+            margin-top: 0;
+        }
+        .row-transition.active {
+            max-height: 40px; /* enough to show row */
+            opacity: 1;
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+
+<div id="header-overlay">
+    <div class="pointer-events-auto">
+        <h1 class="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">MOMENT VECTORS</h1>
+        <p class="text-slate-400 text-sm max-w-md mt-1 font-medium">Visualize the rotational tendency of a force about a point or a specific axis in 3D space.</p>
+    </div>
+    
+    <!-- Mode Switcher -->
+    <div class="pointer-events-auto flex bg-slate-900/80 backdrop-blur-md rounded-lg p-1.5 border border-slate-700 shadow-xl">
+        <button id="btnModePoint" class="px-5 py-2 rounded-md text-sm font-bold bg-blue-600 text-white shadow transition-all duration-200">About Point</button>
+        <button id="btnModeAxis" class="px-5 py-2 rounded-md text-sm font-bold text-slate-400 hover:text-white transition-all duration-200">About Axis</button>
+    </div>
+</div>
+
+<div id="canvas-wrapper">
+    <!-- Three.js will inject canvas here -->
+</div>
+
+<div id="bottom-dashboard">
+    
+    <!-- Left Section: Playback & Reset -->
+    <div class="flex items-center gap-4 border-r border-slate-800 pr-6 flex-shrink-0">
+        <button id="btnPlay" class="w-14 h-14 rounded-full bg-red-600 hover:bg-red-500 text-white flex items-center justify-center shadow-[0_0_20px_rgba(220,38,38,0.4)] hover:shadow-[0_0_25px_rgba(220,38,38,0.6)] transition-all">
+            <i class="fas fa-pause text-xl ml-0.5"></i>
+        </button>
+        <button id="btnReset" class="w-10 h-10 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-all border border-slate-700" title="Reset Simulation">
+            <i class="fas fa-rotate-left"></i>
+        </button>
+    </div>
+
+    <!-- Telemetry Readout -->
+    <div class="flex flex-col justify-center px-2 border-r border-slate-800 pr-6 min-w-[140px] flex-shrink-0">
+        <span class="text-[0.65rem] text-slate-500 font-bold tracking-widest uppercase mb-1">Moment Mag</span>
+        <div class="flex items-baseline gap-1">
+            <div class="font-mono text-3xl font-extrabold text-green-400 drop-shadow-[0_0_8px_rgba(34,197,94,0.3)]" id="magDisp">0.0</div>
+            <span class="text-xs text-slate-500 font-bold">N·m</span>
+        </div>
+    </div>
+
+    <!-- Center Section: Flexible Inputs Grid -->
+    <div class="flex-grow flex flex-col justify-center">
+        <!-- R Vector Row -->
+        <div class="flex items-center gap-6 w-full">
+            <div class="w-16 text-[0.7rem] font-bold text-blue-400 uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
+                <div class="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_5px_rgba(59,130,246,0.8)]"></div>
+                Pos (r)
+            </div>
+            <div class="flex-grow flex gap-6">
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">X</span>
+                    <input type="range" class="slider-blue" id="rx" min="-10" max="10" step="0.1" value="5">
+                    <input type="number" class="seamless-input" id="rx_in" value="5">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Y</span>
+                    <input type="range" class="slider-blue" id="ry" min="-10" max="10" step="0.1" value="0">
+                    <input type="number" class="seamless-input" id="ry_in" value="0">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Z</span>
+                    <input type="range" class="slider-blue" id="rz" min="-10" max="10" step="0.1" value="0">
+                    <input type="number" class="seamless-input" id="rz_in" value="0">
+                </div>
+            </div>
+        </div>
+
+        <!-- F Vector Row -->
+        <div class="flex items-center gap-6 w-full mt-2">
+            <div class="w-16 text-[0.7rem] font-bold text-red-400 uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
+                <div class="w-2 h-2 rounded-full bg-red-500 shadow-[0_0_5px_rgba(239,68,68,0.8)]"></div>
+                Force
+            </div>
+            <div class="flex-grow flex gap-6">
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">X</span>
+                    <input type="range" class="slider-red" id="fx" min="-1000" max="1000" step="10" value="0">
+                    <input type="number" class="seamless-input" id="fx_in" value="0">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Y</span>
+                    <input type="range" class="slider-red" id="fy" min="-1000" max="1000" step="10" value="400">
+                    <input type="number" class="seamless-input" id="fy_in" value="400">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Z</span>
+                    <input type="range" class="slider-red" id="fz" min="-1000" max="1000" step="10" value="0">
+                    <input type="number" class="seamless-input" id="fz_in" value="0">
+                </div>
+            </div>
+        </div>
+
+        <!-- Axis Vector Row (Hidden by default, animates in) -->
+        <div id="row-axis" class="row-transition flex items-center gap-6 w-full">
+            <div class="w-16 text-[0.7rem] font-bold text-yellow-400 uppercase tracking-wide flex items-center gap-1.5 flex-shrink-0">
+                <div class="w-2 h-2 rounded-full bg-yellow-500 shadow-[0_0_5px_rgba(234,179,8,0.8)]"></div>
+                Axis
+            </div>
+            <div class="flex-grow flex gap-6">
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">X</span>
+                    <input type="range" class="slider-yellow" id="ax" min="-1" max="1" step="0.01" value="0">
+                    <input type="number" class="seamless-input" id="ax_in" value="0">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Y</span>
+                    <input type="range" class="slider-yellow" id="ay" min="-1" max="1" step="0.01" value="1">
+                    <input type="number" class="seamless-input" id="ay_in" value="1">
+                </div>
+                <div class="flex-1 flex items-center gap-3">
+                    <span class="text-[0.65rem] font-bold text-slate-500 w-2">Z</span>
+                    <input type="range" class="slider-yellow" id="az" min="-1" max="1" step="0.01" value="0">
+                    <input type="number" class="seamless-input" id="az_in" value="0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Divider -->
+    <div class="w-px self-stretch bg-slate-800 mx-2"></div>
+
+    <!-- Scale Control -->
+    <div class="flex flex-col justify-center w-28 flex-shrink-0 gap-2">
+        <span class="text-[0.65rem] text-slate-400 font-bold tracking-wider uppercase text-center">Vector Scale</span>
+        <input type="range" id="mScale" min="0.2" max="3" step="0.1" value="1" class="slider-green w-full" title="Shrink/Grow Moment Vector Visual">
+    </div>
+
+    <!-- Divider -->
+    <div class="w-px self-stretch bg-slate-800 mx-2"></div>
+
+    <!-- Right Section: View Toggles -->
+    <div class="flex flex-col justify-center gap-3 flex-shrink-0 w-36">
+        <label class="flex items-center gap-3 cursor-pointer group">
+            <div class="custom-toggle">
+                <input type="checkbox" id="tglSpin" checked>
+                <div class="toggle-track"></div>
+            </div>
+            <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">Spinning Indicator</span>
+        </label>
+        
+        <label class="flex items-center gap-3 cursor-pointer group">
+            <div class="custom-toggle">
+                <input type="checkbox" id="tglVec" checked>
+                <div class="toggle-track"></div>
+            </div>
+            <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">Moment Vector</span>
+        </label>
+        
+        <label class="flex items-center gap-3 cursor-pointer group">
+            <div class="custom-toggle">
+                <input type="checkbox" id="tglAnim">
+                <div class="toggle-track"></div>
+            </div>
+            <span class="text-xs font-semibold text-slate-300 group-hover:text-white transition-colors">Animate Bar</span>
+        </label>
+    </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    // --- State Management ---
+    const state = {
+        mode: 'point', // 'point' | 'axis'
+        r: { x: 5, y: 0, z: 0 },
+        F: { x: 0, y: 400, z: 0 },
+        axis: { x: 0, y: 1, z: 0 },
+        scale: 1,
+        showSpin: true,
+        showVec: true,
+        animateBar: false,
+        isPlaying: true,
+        animTime: 0,
+        currentMag: 0,
+        currentM_eff: new THREE.Vector3()
+    };
+
+    // --- UI Setup & Event Listeners ---
+    function syncInput(id, val) {
+        document.getElementById(id).value = val;
+        document.getElementById(id + '_in').value = val;
+        
+        // Update State
+        const v = parseFloat(val) || 0;
+        if(id.startsWith('r')) state.r[id.charAt(1)] = v;
+        if(id.startsWith('f')) state.F[id.charAt(1)] = v;
+        if(id.startsWith('a')) state.axis[id.charAt(1)] = v;
+        
+        updateSimulation();
+    }
+
+    const inputIds = ['rx', 'ry', 'rz', 'fx', 'fy', 'fz', 'ax', 'ay', 'az'];
+    inputIds.forEach(id => {
+        document.getElementById(id).addEventListener('input', e => syncInput(id, e.target.value));
+        document.getElementById(id + '_in').addEventListener('input', e => syncInput(id, e.target.value));
+    });
+
+    document.getElementById('mScale').addEventListener('input', e => {
+        state.scale = parseFloat(e.target.value);
+        updateSimulation();
+    });
+
+    // Toggles
+    document.getElementById('tglSpin').addEventListener('change', e => { state.showSpin = e.target.checked; updateSimulation(); });
+    document.getElementById('tglVec').addEventListener('change', e => { state.showVec = e.target.checked; updateSimulation(); });
+    document.getElementById('tglAnim').addEventListener('change', e => { 
+        state.animateBar = e.target.checked; 
+        if(!state.animateBar) {
+            barGroup.rotation.set(0,0,0);
+            barGroup.quaternion.identity();
+            state.animTime = 0;
+        }
+    });
+
+    // Playback
+    const btnPlay = document.getElementById('btnPlay');
+    const playIcon = btnPlay.querySelector('i');
+    btnPlay.addEventListener('click', () => {
+        state.isPlaying = !state.isPlaying;
+        if(state.isPlaying) {
+            playIcon.className = 'fas fa-pause text-xl ml-0.5';
+            btnPlay.classList.replace('bg-slate-700', 'bg-red-600');
+            btnPlay.classList.add('shadow-[0_0_20px_rgba(220,38,38,0.4)]');
+        } else {
+            playIcon.className = 'fas fa-play text-xl ml-1';
+            btnPlay.classList.replace('bg-red-600', 'bg-slate-700');
+            btnPlay.classList.remove('shadow-[0_0_20px_rgba(220,38,38,0.4)]');
+        }
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+        syncInput('rx', 5); syncInput('ry', 0); syncInput('rz', 0);
+        syncInput('fx', 0); syncInput('fy', 400); syncInput('fz', 0);
+        syncInput('ax', 0); syncInput('ay', 1); syncInput('az', 0);
+        state.scale = 1; document.getElementById('mScale').value = 1;
+        state.animTime = 0;
+        barGroup.rotation.set(0,0,0); barGroup.quaternion.identity();
+        
+        // Reset view
+        camera.position.set(12, 10, 15);
+        controls.target.set(0, 0, 0);
+    });
+
+    // Mode Switcher
+    const btnPoint = document.getElementById('btnModePoint');
+    const btnAxis = document.getElementById('btnModeAxis');
+    const rowAxis = document.getElementById('row-axis');
+
+    function setMode(mode) {
+        state.mode = mode;
+        if(mode === 'axis') {
+            rowAxis.classList.add('active');
+            btnAxis.className = 'px-5 py-2 rounded-md text-sm font-bold bg-blue-600 text-white shadow transition-all duration-200';
+            btnPoint.className = 'px-5 py-2 rounded-md text-sm font-bold text-slate-400 hover:text-white transition-all duration-200';
+        } else {
+            rowAxis.classList.remove('active');
+            btnPoint.className = 'px-5 py-2 rounded-md text-sm font-bold bg-blue-600 text-white shadow transition-all duration-200';
+            btnAxis.className = 'px-5 py-2 rounded-md text-sm font-bold text-slate-400 hover:text-white transition-all duration-200';
+        }
+        updateSimulation();
+    }
+    btnPoint.addEventListener('click', () => setMode('point'));
+    btnAxis.addEventListener('click', () => setMode('axis'));
+
+
+    const container = document.getElementById('canvas-wrapper');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a); 
+    
+    // Grid and Axes for context
+    const gridHelper = new THREE.GridHelper(30, 30, 0x334155, 0x1e293b);
+    scene.add(gridHelper);
+    const axesHelper = new THREE.AxesHelper(15);
+    scene.add(axesHelper);
+
+    // Camera setup
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    camera.position.set(12, 10, 15);
+    
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    container.appendChild(renderer.domElement);
+
+    // Controls
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    
+    // Lights
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 15);
+    scene.add(dirLight);
+
+    // Grouping
+    const dynamicGroup = new THREE.Group(); // Forces, vectors, axes
+    const barGroup = new THREE.Group();     // The physical structure
+    const spinGroup = new THREE.Group();    // The rotating UI indicator
+    scene.add(dynamicGroup);
+    scene.add(barGroup);
+    scene.add(spinGroup);
+
+    // Reusable Materials
+    const matBar = new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.2, metalness: 0.5 });
+    const matJoint = new THREE.MeshStandardMaterial({ color: 0x475569 });
+
+    // Helper to clear groups
+    function clearGroup(grp) {
+        while(grp.children.length > 0) {
+            const child = grp.children[0];
+            grp.remove(child);
+            if(child.geometry) child.geometry.dispose();
+            if(child.material) child.material.dispose();
+        }
+    }
+
+    function updateSimulation() {
+        clearGroup(dynamicGroup);
+        clearGroup(barGroup);
+        clearGroup(spinGroup);
+
+        const r = new THREE.Vector3(state.r.x, state.r.y, state.r.z);
+        const F = new THREE.Vector3(state.F.x, state.F.y, state.F.z);
+        
+        // 1. Calculate Moment
+        let M = new THREE.Vector3().crossVectors(r, F);
+        let M_eff = M.clone();
+        let mag = M.length();
+
+        if (state.mode === 'axis') {
+            let ax = new THREE.Vector3(state.axis.x, state.axis.y, state.axis.z);
+            if (ax.lengthSq() < 0.0001) ax.set(0,1,0); // Fallback to prevent NaN
+            ax.normalize();
+
+            // Draw axis line (dashed)
+            const lineMat = new THREE.LineDashedMaterial({ color: 0xeab308, dashSize: 0.5, gapSize: 0.5 });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                ax.clone().multiplyScalar(-20),
+                ax.clone().multiplyScalar(20)
+            ]);
+            const axisLine = new THREE.Line(lineGeo, lineMat);
+            axisLine.computeLineDistances();
+            dynamicGroup.add(axisLine);
+
+            // Project Moment onto axis: M_a = (M • u) * u
+            const dot = M.dot(ax);
+            mag = Math.abs(dot);
+            M_eff = ax.clone().multiplyScalar(dot);
+        }
+
+        // Update UI Telemetry
+        document.getElementById('magDisp').innerText = mag.toFixed(1);
+        
+        // Save state for animation
+        state.currentM_eff = M_eff.clone();
+        state.currentMag = mag;
+
+        // 2. Draw physical bar
+        if (r.length() > 0) {
+            const path = new THREE.LineCurve3(new THREE.Vector3(0,0,0), r);
+            const tubeGeo = new THREE.TubeGeometry(path, 20, 0.2, 8, false);
+            const tubeMesh = new THREE.Mesh(tubeGeo, matBar);
+            barGroup.add(tubeMesh);
+            
+            const joint = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), matJoint);
+            barGroup.add(joint);
+        }
+
+        // 3. Draw Input Vectors (r and F)
+        if (r.length() > 0) {
+            // Position Vector (Blue)
+            dynamicGroup.add(new THREE.ArrowHelper(r.clone().normalize(), new THREE.Vector3(0,0,0), r.length(), 0x3b82f6, 0.4, 0.2));
+        }
+
+        const fVisualScale = 0.01;
+        if (F.length() > 0) {
+            // Force Vector (Red) at end of r
+            dynamicGroup.add(new THREE.ArrowHelper(F.clone().normalize(), r, F.length() * fVisualScale, 0xef4444, 0.6, 0.3));
+        }
+
+        // 4. Draw Moment Vector
+        const mVisualBaseScale = 0.005;
+        const mVisualLength = mag * mVisualBaseScale * state.scale;
+        
+        if (mag > 0.01) {
+            const dir = M_eff.clone().normalize();
+            
+            if (state.showVec) {
+                // Green Arrow for Moment
+                dynamicGroup.add(new THREE.ArrowHelper(dir, new THREE.Vector3(0,0,0), mVisualLength, 0x22c55e, 0.8, 0.4));
+            }
+
+            if (state.showSpin) {
+                // Yellow-Green Torus to show rotation tendency
+                const radius = Math.max(1.0, r.length() * 0.4);
+                const torusGeo = new THREE.TorusGeometry(radius, 0.06, 8, 48, Math.PI * 1.5);
+                const torusMat = new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
+                
+                const ring = new THREE.Group();
+                ring.add(new THREE.Mesh(torusGeo, torusMat));
+
+                // Arrowhead on torus
+                const coneGeo = new THREE.ConeGeometry(0.25, 0.6, 8);
+                const cone = new THREE.Mesh(coneGeo, torusMat);
+                cone.position.set(radius, 0, 0);
+                cone.rotation.x = Math.PI / 2;
+                ring.add(cone);
+
+                // Align ring to moment vector
+                const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), dir);
+                ring.applyQuaternion(quat);
+
+                // Store meta data for animation
+                ring.userData = { sign: Math.sign(M.dot(dir)) || 1 };
+                spinGroup.add(ring);
+            }
+        }
+    }
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
+        if (state.isPlaying) {
+            state.animTime += delta;
+
+            // Animate the spinning indicator ring
+            if (state.showSpin && spinGroup.children.length > 0) {
+                const ring = spinGroup.children[0];
+                // Rotate locally around its Z axis (which is aligned to Moment)
+                ring.rotateZ(delta * 4 * ring.userData.sign);
+            }
+
+            // Animate the physical bar around the Moment axis
+            if (state.animateBar && state.currentMag > 0.01) {
+                const axis = state.currentM_eff.clone().normalize();
+                const angularSpeed = 1.0; 
+                // We set absolute rotation from time to ensure smooth looping without drifting
+                barGroup.setRotationFromAxisAngle(axis, state.animTime * angularSpeed);
+            }
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    // Handle Window Resize
+    window.addEventListener('resize', () => {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+    });
+
+    // Initialize
+    window.onload = () => {
+        updateSimulation();
+        animate();
+    };
+
+</script>
+</body>
+</html>
