@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Moment Vector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #0f172a; /* slate-900 */
+            --panel-bg: #1e293b; /* slate-800 */
+            --border-color: #334155; /* slate-700 */
+            --text-main: #f8fafc; /* slate-50 */
+            --text-muted: #94a3b8; /* slate-400 */
+            --accent-blue: #3b82f6; /* blue-500 */
+            --accent-red: #ef4444; /* red-500 */
+            --accent-green: #22c55e; /* green-500 */
+        }
+
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Inter:wght@400;500;600;700&display=swap');
+
+        body { 
+            margin: 0; 
+            overflow: hidden; 
+            background-color: var(--bg-color); 
+            color: var(--text-main); 
+            font-family: 'Inter', system-ui, sans-serif; 
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+        
+        /* Top half: Canvas */
+        #canvas-wrapper { 
+            flex-grow: 1;
+            position: relative; 
+            width: 100%; 
+            z-index: 1;
+        }
+        #canvas-container {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Bottom half: UI Panel - Much more compact */
+        #ui-panel { 
+            height: auto;
+            background-color: var(--panel-bg);
+            border-top: 1px solid var(--border-color);
+            z-index: 10;
+            padding: 0.5rem 1rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.25rem;
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.5);
+        }
+
+        /* Custom Input Styling - Miniaturized */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            height: 10px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 8px;
+            width: 8px;
+            border-radius: 50%;
+            background: var(--text-main);
+            cursor: pointer;
+            margin-top: -3px;
+            box-shadow: 0 0 2px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 2px;
+            cursor: pointer;
+            background: var(--border-color);
+            border-radius: 1px;
+        }
+        
+        /* Specific slider thumb colors based on vector */
+        input[id^="r"]::-webkit-slider-thumb { background: var(--accent-blue); }
+        input[id^="f"]::-webkit-slider-thumb { background: var(--accent-red); }
+
+        input[type=number] {
+            background-color: #0f172a;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 1px 4px;
+            border-radius: 3px;
+            width: 50px;
+            text-align: right;
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.7rem;
+        }
+        
+        input[type=number]:focus {
+            outline: none;
+            border-color: var(--text-muted);
+        }
+
+        /* Hide number input arrows */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+
+        .compact-label {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            font-weight: 600;
+            width: 12px;
+        }
+
+        .compact-control {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-grow: 1;
+        }
+        
+        .font-math {
+            font-family: 'JetBrains Mono', monospace;
+        }
+        
+        /* Toggle Switch */
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 28px;
+            height: 14px;
+        }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background-color: var(--border-color);
+            transition: .2s;
+            border-radius: 14px;
+        }
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 10px; width: 10px;
+            left: 2px; bottom: 2px;
+            background-color: white;
+            transition: .2s;
+            border-radius: 50%;
+        }
+        input:checked + .slider { background-color: var(--accent-blue); }
+        input:checked + .slider:before { transform: translateX(14px); }
+    </style>
+</head>
+<body>
+
+<div id="canvas-wrapper">
+    <div id="canvas-container"></div>
+</div>
+
+<div id="ui-panel">
+    <div class="flex flex-col md:flex-row justify-between items-center gap-2 md:gap-6 w-full">
+        
+        <!-- Position Vector r -->
+        <div class="flex-1 w-full">
+            <div class="flex items-center gap-2 mb-1">
+                <div class="w-2 h-2 rounded-full bg-blue-500"></div>
+                <div class="text-[0.65rem] font-bold text-slate-300 uppercase tracking-wider">Position (m)</div>
+            </div>
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">X</div>
+                    <div class="compact-control">
+                        <input type="range" id="rxRange" min="-10" max="10" step="0.1" value="5">
+                        <input type="number" id="rxInput" value="5" step="0.1">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">Y</div>
+                    <div class="compact-control">
+                        <input type="range" id="ryRange" min="-10" max="10" step="0.1" value="0">
+                        <input type="number" id="ryInput" value="0" step="0.1">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">Z</div>
+                    <div class="compact-control">
+                        <input type="range" id="rzRange" min="-10" max="10" step="0.1" value="0">
+                        <input type="number" id="rzInput" value="0" step="0.1">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Divider -->
+        <div class="hidden md:block w-px h-16 bg-slate-700"></div>
+
+        <!-- Force Vector F -->
+        <div class="flex-1 w-full">
+            <div class="flex items-center gap-2 mb-1">
+                <div class="w-2 h-2 rounded-full bg-red-500"></div>
+                <div class="text-[0.65rem] font-bold text-slate-300 uppercase tracking-wider">Force (N)</div>
+            </div>
+            <div class="flex flex-col gap-1">
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">X</div>
+                    <div class="compact-control">
+                        <input type="range" id="fxRange" min="-1000" max="1000" step="10" value="0">
+                        <input type="number" id="fxInput" value="0" step="10">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">Y</div>
+                    <div class="compact-control">
+                        <input type="range" id="fyRange" min="-1000" max="1000" step="10" value="400">
+                        <input type="number" id="fyInput" value="400" step="10">
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="compact-label">Z</div>
+                    <div class="compact-control">
+                        <input type="range" id="fzRange" min="-1000" max="1000" step="10" value="0">
+                        <input type="number" id="fzInput" value="0" step="10">
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Divider -->
+        <div class="hidden md:block w-px h-16 bg-slate-700"></div>
+
+        <!-- Results & Display Controls -->
+        <div class="flex-1 w-full flex flex-col justify-between h-full min-w-[200px]">
+            <!-- Math Display -->
+            <div class="text-[0.65rem] font-math bg-slate-900/50 rounded p-1.5 border border-slate-700/50 mb-1">
+                <div class="flex justify-between">
+                    <span class="text-slate-400">r: <span id="rDisp" class="text-blue-400">[5.0, 0.0, 0.0]</span></span>
+                    <span class="text-slate-400 ml-2">F: <span id="fDisp" class="text-red-400">[0.0, 400.0, 0.0]</span></span>
+                </div>
+                <div class="flex justify-between font-bold mt-1 pt-1 border-t border-slate-700/50">
+                    <span class="text-green-400">M: <span id="mDisp">[0.0, 0.0, 2000.0]</span></span>
+                    <span class="text-slate-300">|<span class="text-green-400">M</span>| = <span id="mMagDisp">2000.0</span></span>
+                </div>
+            </div>
+
+            <!-- View & Anim Controls -->
+            <div class="flex items-center gap-3 mt-auto">
+                <div class="flex items-center gap-1.5">
+                    <label class="switch">
+                        <input type="checkbox" id="toggleLoA">
+                        <span class="slider"></span>
+                    </label>
+                    <span class="text-[0.6rem] text-slate-400 font-semibold uppercase">Action Line</span>
+                </div>
+                
+                <div class="flex-grow"></div>
+
+                <div class="flex items-center gap-1 bg-slate-900/50 rounded-full px-2 py-0.5 border border-slate-700/50">
+                    <button id="btnPlayPause" class="w-5 h-5 flex items-center justify-center text-slate-400 hover:text-white transition" title="Play/Pause">
+                        <i class="fa-solid fa-pause text-[0.6rem]"></i>
+                    </button>
+                    <input type="range" id="animSpeed" min="0" max="2" step="0.1" value="1" class="w-12 h-1">
+                </div>
+
+                <div class="flex items-center gap-1">
+                    <button id="btnResetView" class="w-6 h-6 flex items-center justify-center bg-slate-700/50 hover:bg-slate-600 rounded text-slate-300 transition" title="Reset View">
+                        <i class="fa-solid fa-video text-[0.6rem]"></i>
+                    </button>
+                    <button id="btnReset" class="w-6 h-6 flex items-center justify-center bg-slate-700/50 hover:bg-slate-600 rounded text-slate-300 transition" title="Reset Values">
+                        <i class="fa-solid fa-rotate-left text-[0.6rem]"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+<script>
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f172a); // match var(--bg-color)
+    
+    const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+    
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(container.clientWidth, container.clientHeight);
+    renderer.setPixelRatio(window.devicePixelRatio);
+    renderer.shadowMap.enabled = true;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+    scene.add(ambientLight);
+    const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+    dirLight.position.set(10, 20, 10);
+    scene.add(dirLight);
+
+    // Grid & Axes
+    const axesHelper = new THREE.AxesHelper(10);
+    scene.add(axesHelper);
+    
+    const gridHelper = new THREE.GridHelper(20, 20, 0x334155, 0x1e293b);
+    gridHelper.position.y = -0.01;
+    scene.add(gridHelper);
+
+    let dynamicGroup = new THREE.Group();
+    scene.add(dynamicGroup);
+
+    const structureMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.4, metalness: 0.2 });
+
+    let isPlaying = true;
+    let animSpeedMult = 1.0;
+    let rotationIndicator = null;
+    let lineOfActionMesh = null;
+    let showLineOfAction = false;
+
+    function createArrow(dir, origin, length, hexColor, headLength, headWidth) {
+        if(length < 0.001) length = 0.001;
+        return new THREE.ArrowHelper(dir.clone().normalize(), origin, length, hexColor, headLength, headWidth);
+    }
+
+    function renderSystem(rVec, fVec) {
+        while(dynamicGroup.children.length > 0){ dynamicGroup.remove(dynamicGroup.children[0]); }
+        rotationIndicator = null;
+        lineOfActionMesh = null;
+
+        const mVec = new THREE.Vector3().crossVectors(rVec, fVec);
+
+        // Build simple bar
+        if(rVec.length() > 0) {
+            const path = new THREE.LineCurve3(new THREE.Vector3(0,0,0), rVec);
+            const tubeGeo = new THREE.TubeGeometry(path, 20, 0.1, 8, false);
+            const tubeMesh = new THREE.Mesh(tubeGeo, structureMat);
+            dynamicGroup.add(tubeMesh);
+            
+            const sphereGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            const joint = new THREE.Mesh(sphereGeo, new THREE.MeshStandardMaterial({color: 0x475569}));
+            dynamicGroup.add(joint);
+        }
+
+        // Vectors
+        const vScaleF = 0.005; // Visual scaling for Force
+        const vScaleM = 0.002; // Visual scaling for Moment
+
+        if(rVec.length() > 0) {
+            dynamicGroup.add(createArrow(rVec, new THREE.Vector3(0,0,0), rVec.length(), 0x3b82f6, 0.3, 0.15));
+        }
+
+        const fVisLen = fVec.length() * vScaleF;
+        if(fVisLen > 0) {
+            dynamicGroup.add(createArrow(fVec, rVec, fVisLen, 0xef4444, 0.4, 0.2));
+            
+            // Setup Line of Action (Infinite line along force vector)
+            const fDir = fVec.clone().normalize();
+            // Create a very long line in both directions
+            const lineLength = 1000;
+            const p1 = rVec.clone().add(fDir.clone().multiplyScalar(lineLength));
+            const p2 = rVec.clone().sub(fDir.clone().multiplyScalar(lineLength));
+            
+            const loaGeo = new THREE.BufferGeometry().setFromPoints([p1, p2]);
+            const loaMat = new THREE.LineDashedMaterial({
+                color: 0xef4444,
+                dashSize: 0.2,
+                gapSize: 0.2,
+                transparent: true,
+                opacity: 0.4
+            });
+            lineOfActionMesh = new THREE.Line(loaGeo, loaMat);
+            lineOfActionMesh.computeLineDistances();
+            lineOfActionMesh.visible = showLineOfAction;
+            dynamicGroup.add(lineOfActionMesh);
+        }
+
+        const mVisLen = mVec.length() * vScaleM;
+        if(mVisLen > 0) {
+            dynamicGroup.add(createArrow(mVec, new THREE.Vector3(0,0,0), mVisLen, 0x22c55e, 0.5, 0.25));
+            setupRotationIndicator(mVec, rVec.length());
+        }
+
+        // Update Text - Formatted for compactness
+        document.getElementById('rDisp').innerText = `[${rVec.x.toFixed(1)}, ${rVec.y.toFixed(1)}, ${rVec.z.toFixed(1)}]`;
+        document.getElementById('fDisp').innerText = `[${fVec.x.toFixed(1)}, ${fVec.y.toFixed(1)}, ${fVec.z.toFixed(1)}]`;
+        document.getElementById('mDisp').innerText = `[${mVec.x.toFixed(1)}, ${mVec.y.toFixed(1)}, ${mVec.z.toFixed(1)}]`;
+        document.getElementById('mMagDisp').innerText = mVec.length().toFixed(1);
+    }
+
+    function setupRotationIndicator(mVec, radius) {
+        if(mVec.length() < 0.1) return;
+
+        const torusRadius = Math.max(0.5, radius * 0.5);
+        const torusGeo = new THREE.TorusGeometry(torusRadius, 0.05, 8, 48, Math.PI * 1.5);
+        const torusMat = new THREE.MeshBasicMaterial({ color: 0xfacc15, side: THREE.DoubleSide });
+        
+        const ringGroup = new THREE.Group();
+        ringGroup.add(new THREE.Mesh(torusGeo, torusMat));
+
+        const coneGeo = new THREE.ConeGeometry(0.15, 0.4, 8);
+        const arrowHead = new THREE.Mesh(coneGeo, torusMat);
+        arrowHead.position.set(torusRadius, 0, 0);
+        arrowHead.rotation.x = Math.PI / 2;
+        ringGroup.add(arrowHead);
+
+        const normalizedM = mVec.clone().normalize();
+        const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), normalizedM);
+        ringGroup.applyQuaternion(quaternion);
+
+        dynamicGroup.add(ringGroup);
+        
+        rotationIndicator = {
+            group: ringGroup,
+            speed: Math.min(5, mVec.length() * 0.002)
+        };
+    }
+
+    const inputs = ['rx', 'ry', 'rz', 'fx', 'fy', 'fz'];
+    
+    function syncInputs(source, val) {
+        const baseId = source.replace('Range', '').replace('Input', '');
+        document.getElementById(baseId + 'Range').value = val;
+        document.getElementById(baseId + 'Input').value = val;
+        updateFromUI();
+    }
+
+    inputs.forEach(id => {
+        document.getElementById(`${id}Range`).addEventListener('input', (e) => syncInputs(e.target.id, e.target.value));
+        document.getElementById(`${id}Input`).addEventListener('input', (e) => syncInputs(e.target.id, e.target.value));
+    });
+
+    function updateFromUI() {
+        const r = new THREE.Vector3(
+            parseFloat(document.getElementById('rxInput').value) || 0,
+            parseFloat(document.getElementById('ryInput').value) || 0,
+            parseFloat(document.getElementById('rzInput').value) || 0
+        );
+        const F = new THREE.Vector3(
+            parseFloat(document.getElementById('fxInput').value) || 0,
+            parseFloat(document.getElementById('fyInput').value) || 0,
+            parseFloat(document.getElementById('fzInput').value) || 0
+        );
+        renderSystem(r, F);
+    }
+    
+    document.getElementById('toggleLoA').addEventListener('change', (e) => {
+        showLineOfAction = e.target.checked;
+        if(lineOfActionMesh) {
+            lineOfActionMesh.visible = showLineOfAction;
+        }
+    });
+
+    document.getElementById('btnReset').addEventListener('click', () => {
+        document.getElementById('rxInput').value = 5; document.getElementById('rxRange').value = 5;
+        document.getElementById('ryInput').value = 0; document.getElementById('ryRange').value = 0;
+        document.getElementById('rzInput').value = 0; document.getElementById('rzRange').value = 0;
+        
+        document.getElementById('fxInput').value = 0; document.getElementById('fxRange').value = 0;
+        document.getElementById('fyInput').value = 400; document.getElementById('fyRange').value = 400;
+        document.getElementById('fzInput').value = 0; document.getElementById('fzRange').value = 0;
+        
+        updateFromUI();
+    });
+
+    const btnPlay = document.getElementById('btnPlayPause');
+    const playIcon = btnPlay.querySelector('i');
+    btnPlay.addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        playIcon.className = isPlaying ? 'fa-solid fa-pause' : 'fa-solid fa-play';
+        if(isPlaying) playIcon.classList.add('text-blue-400');
+        else playIcon.classList.remove('text-blue-400');
+    });
+
+    document.getElementById('animSpeed').addEventListener('input', (e) => {
+        animSpeedMult = parseFloat(e.target.value);
+    });
+
+    document.getElementById('btnResetView').addEventListener('click', () => {
+        camera.position.set(8, 6, 10);
+        controls.target.set(0,0,0);
+    });
+
+    window.addEventListener('resize', () => {
+        const width = container.clientWidth;
+        const height = container.clientHeight;
+        renderer.setSize(width, height);
+        camera.aspect = width / height;
+        camera.updateProjectionMatrix();
+    });
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+        
+        if(isPlaying && rotationIndicator) {
+            rotationIndicator.group.rotateZ(rotationIndicator.speed * animSpeedMult * delta);
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+    }
+
+    window.onload = () => {
+        camera.position.set(8, 6, 10);
+        updateFromUI();
+        animate();
+    };
+
+</script>
+</body>
+</html>
