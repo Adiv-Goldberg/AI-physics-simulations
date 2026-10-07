@@ -33,19 +33,17 @@
             width: 100vw;
         }
 
-        /* Top Header overlays canvas */
-        #header-overlay {
-            position: absolute;
-            top: 0; left: 0; width: 100%;
-            padding: 1.5rem;
+        /* Top Header Block */
+        #top-header {
+            background-color: var(--bg-canvas);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1rem 1.5rem;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
-            pointer-events: none;
+            align-items: center;
+            flex-shrink: 0;
             z-index: 20;
         }
-
-        .pointer-events-auto { pointer-events: auto; }
 
         /* Canvas occupies remaining space naturally */
         #canvas-wrapper { 
@@ -180,14 +178,14 @@
 </head>
 <body>
 
-<div id="header-overlay">
-    <div class="pointer-events-auto">
+<div id="top-header">
+    <div>
         <h1 class="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">MOMENT VECTORS</h1>
         <p class="text-slate-400 text-sm max-w-md mt-1 font-medium">Visualize the rotational tendency of a force about a point or a specific axis in 3D space.</p>
     </div>
     
     <!-- Mode Switcher -->
-    <div class="pointer-events-auto flex bg-slate-900/80 backdrop-blur-md rounded-lg p-1.5 border border-slate-700 shadow-xl">
+    <div class="flex bg-slate-900/80 backdrop-blur-md rounded-lg p-1.5 border border-slate-700 shadow-xl">
         <button id="btnModePoint" class="px-5 py-2 rounded-md text-sm font-bold bg-blue-600 text-white shadow transition-all duration-200">About Point</button>
         <button id="btnModeAxis" class="px-5 py-2 rounded-md text-sm font-bold text-slate-400 hover:text-white transition-all duration-200">About Axis</button>
     </div>
@@ -388,8 +386,8 @@
     document.getElementById('tglAnim').addEventListener('change', e => { 
         state.animateBar = e.target.checked; 
         if(!state.animateBar) {
-            barGroup.rotation.set(0,0,0);
-            barGroup.quaternion.identity();
+            rotatingGroup.rotation.set(0,0,0);
+            rotatingGroup.quaternion.identity();
             state.animTime = 0;
         }
     });
@@ -416,7 +414,7 @@
         syncInput('ax', 0); syncInput('ay', 1); syncInput('az', 0);
         state.scale = 1; document.getElementById('mScale').value = 1;
         state.animTime = 0;
-        barGroup.rotation.set(0,0,0); barGroup.quaternion.identity();
+        rotatingGroup.rotation.set(0,0,0); rotatingGroup.quaternion.identity();
         
         // Reset view
         camera.position.set(12, 10, 15);
@@ -477,11 +475,11 @@
     scene.add(dirLight);
 
     // Grouping
-    const dynamicGroup = new THREE.Group(); // Forces, vectors, axes
-    const barGroup = new THREE.Group();     // The physical structure
+    const dynamicGroup = new THREE.Group(); // Fixed elements: Moment vectors, Axes
+    const rotatingGroup = new THREE.Group(); // Physical Bar and applied Force vectors
     const spinGroup = new THREE.Group();    // The rotating UI indicator
     scene.add(dynamicGroup);
-    scene.add(barGroup);
+    scene.add(rotatingGroup);
     scene.add(spinGroup);
 
     // Reusable Materials
@@ -500,8 +498,11 @@
 
     function updateSimulation() {
         clearGroup(dynamicGroup);
-        clearGroup(barGroup);
+        clearGroup(rotatingGroup);
         clearGroup(spinGroup);
+        
+        rotatingGroup.rotation.set(0,0,0);
+        rotatingGroup.quaternion.identity();
 
         const r = new THREE.Vector3(state.r.x, state.r.y, state.r.z);
         const F = new THREE.Vector3(state.F.x, state.F.y, state.F.z);
@@ -539,30 +540,30 @@
         state.currentM_eff = M_eff.clone();
         state.currentMag = mag;
 
-        // 2. Draw physical bar
+        // 2. Draw physical bar inside the rotating group
         if (r.length() > 0) {
             const path = new THREE.LineCurve3(new THREE.Vector3(0,0,0), r);
             const tubeGeo = new THREE.TubeGeometry(path, 20, 0.2, 8, false);
             const tubeMesh = new THREE.Mesh(tubeGeo, matBar);
-            barGroup.add(tubeMesh);
+            rotatingGroup.add(tubeMesh);
             
             const joint = new THREE.Mesh(new THREE.SphereGeometry(0.35, 16, 16), matJoint);
-            barGroup.add(joint);
+            rotatingGroup.add(joint);
         }
 
-        // 3. Draw Input Vectors (r and F)
+        // 3. Draw Input Vectors (r and F) attached to the rotating structure
         if (r.length() > 0) {
             // Position Vector (Blue)
-            dynamicGroup.add(new THREE.ArrowHelper(r.clone().normalize(), new THREE.Vector3(0,0,0), r.length(), 0x3b82f6, 0.4, 0.2));
+            rotatingGroup.add(new THREE.ArrowHelper(r.clone().normalize(), new THREE.Vector3(0,0,0), r.length(), 0x3b82f6, 0.4, 0.2));
         }
 
         const fVisualScale = 0.01;
         if (F.length() > 0) {
             // Force Vector (Red) at end of r
-            dynamicGroup.add(new THREE.ArrowHelper(F.clone().normalize(), r, F.length() * fVisualScale, 0xef4444, 0.6, 0.3));
+            rotatingGroup.add(new THREE.ArrowHelper(F.clone().normalize(), r, F.length() * fVisualScale, 0xef4444, 0.6, 0.3));
         }
 
-        // 4. Draw Moment Vector
+        // 4. Draw fixed Moment Vector
         const mVisualBaseScale = 0.005;
         const mVisualLength = mag * mVisualBaseScale * state.scale;
         
@@ -583,19 +584,19 @@
                 const ring = new THREE.Group();
                 ring.add(new THREE.Mesh(torusGeo, torusMat));
 
-                // Arrowhead on torus
+                // Arrowhead positioned at the end of the 1.5 PI arc
                 const coneGeo = new THREE.ConeGeometry(0.25, 0.6, 8);
                 const cone = new THREE.Mesh(coneGeo, torusMat);
-                cone.position.set(radius, 0, 0);
-                cone.rotation.x = Math.PI / 2;
+                // 1.5 PI arc ends at -Y relative to start
+                cone.position.set(0, -radius, 0); 
+                // Point perfectly along the tangential +X direction
+                cone.rotation.z = -Math.PI / 2; 
                 ring.add(cone);
 
                 // Align ring to moment vector
                 const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,0,1), dir);
                 ring.applyQuaternion(quat);
 
-                // Store meta data for animation
-                ring.userData = { sign: Math.sign(M.dot(dir)) || 1 };
                 spinGroup.add(ring);
             }
         }
@@ -613,16 +614,16 @@
             // Animate the spinning indicator ring
             if (state.showSpin && spinGroup.children.length > 0) {
                 const ring = spinGroup.children[0];
-                // Rotate locally around its Z axis (which is aligned to Moment)
-                ring.rotateZ(delta * 4 * ring.userData.sign);
+                // Rotate locally around its Z axis. RHR naturally dictates positive CCW rotation
+                ring.rotateZ(delta * 4);
             }
 
-            // Animate the physical bar around the Moment axis
+            // Animate the physical bar and applied forces around the Moment axis
             if (state.animateBar && state.currentMag > 0.01) {
                 const axis = state.currentM_eff.clone().normalize();
                 const angularSpeed = 1.0; 
                 // We set absolute rotation from time to ensure smooth looping without drifting
-                barGroup.setRotationFromAxisAngle(axis, state.animTime * angularSpeed);
+                rotatingGroup.setRotationFromAxisAngle(axis, state.animTime * angularSpeed);
             }
         }
 
