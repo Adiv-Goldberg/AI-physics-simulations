@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Material Mechanics Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #06090f; /* Very deep dark blue/black */
+            color: #ffffff;
+            margin: 0;
+            overflow: hidden; /* Prevent scrolling */
+        }
+
+        /* Seamless number input styling */
+        input[type=number]::-webkit-inner-spin-button, 
+        input[type=number]::-webkit-outer-spin-button { 
+            -webkit-appearance: none; 
+            margin: 0; 
+        }
+        input[type=number] {
+            -moz-appearance: textfield;
+            background: transparent;
+            border: none;
+            outline: none;
+            color: #60a5fa; /* Bright blue text */
+            font-weight: 600;
+            text-align: right;
+        }
+
+        /* Custom Range Sliders */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+            height: 4px;
+            border-radius: 2px;
+            cursor: pointer;
+        }
+        
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            background: #1f2937;
+            border-radius: 2px;
+        }
+        
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 16px;
+            width: 16px;
+            border-radius: 50%;
+            background: #3b82f6; /* Bright blue handle */
+            margin-top: -6px;
+            box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
+            transition: transform 0.1s;
+        }
+
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.2);
+        }
+
+        /* Scrubber styling */
+        .scrubber-track {
+            background: #1f2937;
+            height: 6px;
+            border-radius: 3px;
+            position: relative;
+            cursor: pointer;
+        }
+        .scrubber-fill {
+            background: #ec4899; /* Pink fill for progress */
+            height: 100%;
+            border-radius: 3px;
+            width: 0%;
+            box-shadow: 0 0 10px rgba(236, 72, 153, 0.5);
+        }
+
+        .glass-panel {
+            background: rgba(17, 24, 39, 0.8);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(55, 65, 81, 0.5);
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen w-screen text-sm">
+
+    <header class="h-16 flex justify-between items-center px-6 border-b border-gray-800 glass-panel z-10 shrink-0">
+        <div class="flex flex-col">
+            <h1 class="text-lg font-bold tracking-wide text-white">Material Mechanics</h1>
+            <p class="text-xs text-gray-400">Analyze material deformation through stress-strain simulation</p>
+        </div>
+        
+        <div class="flex bg-gray-900 rounded-lg p-1 border border-gray-700">
+            <button id="btn-tensile" class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]">
+                Tensile Test
+            </button>
+            <button id="btn-bend" class="px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-400 hover:text-white">
+                3-Point Bend
+            </button>
+        </div>
+    </header>
+
+    <main class="flex-1 relative flex flex-row overflow-hidden w-full bg-[#06090f]">
+        <!-- Physical Simulation View -->
+        <div class="w-3/5 h-full relative border-r border-gray-800">
+            <canvas id="sim-canvas" class="w-full h-full block"></canvas>
+            <!-- Overlay Labels for Context -->
+            <div class="absolute top-4 left-4 pointer-events-none">
+                <div class="text-blue-400 font-semibold text-xs tracking-wider uppercase mb-1">Live View</div>
+                <div id="sim-readout" class="text-gray-300 font-mono text-xs">Specimen Length: L₀</div>
+            </div>
+        </div>
+
+        <!-- Analytical Graph View -->
+        <div class="w-2/5 h-full relative bg-[#0a0f18]">
+            <canvas id="graph-canvas" class="w-full h-full block"></canvas>
+            <div class="absolute top-4 left-4 pointer-events-none">
+                <div class="text-pink-400 font-semibold text-xs tracking-wider uppercase mb-1">Analytical Plot</div>
+                <div id="graph-title" class="text-gray-300 font-mono text-xs">Stress vs. Strain</div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="h-28 flex flex-col glass-panel shrink-0 border-t border-gray-800 w-full relative z-10">
+        
+        <!-- Upper Section: Timeline Scrubber -->
+        <div class="w-full h-8 flex items-center px-6 pt-2 pb-1 border-b border-gray-800/50">
+            <div class="text-[10px] text-gray-500 w-12 font-mono uppercase tracking-wider">Start</div>
+            <div class="flex-1 px-4 relative flex items-center">
+                <div id="timeline" class="scrubber-track w-full">
+                    <div id="timeline-fill" class="scrubber-fill"></div>
+                </div>
+                <!-- Phase markers -->
+                <div class="absolute w-full px-4 top-4 pointer-events-none text-[9px] text-gray-500 font-mono h-full">
+                    <span class="absolute" style="left: 15%; transform: translateX(-50%)">Yield</span>
+                    <span class="absolute" style="left: 57.5%; transform: translateX(-50%)">UTS</span>
+                </div>
+            </div>
+            <div class="text-[10px] text-gray-500 w-12 text-right font-mono uppercase tracking-wider">Break</div>
+        </div>
+
+        <!-- Lower Section: Controls & Parameters -->
+        <div class="flex-1 flex flex-row items-center justify-between px-6 gap-6">
+            
+            <!-- Playback Controls -->
+            <div class="flex items-center gap-3 shrink-0">
+                <button id="btn-play" class="w-12 h-12 rounded-full bg-pink-600 hover:bg-pink-500 flex items-center justify-center shadow-[0_0_15px_rgba(219,39,119,0.5)] transition-all">
+                    <!-- Play Icon -->
+                    <svg id="icon-play" class="w-5 h-5 text-white ml-1" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                    <!-- Pause Icon (hidden) -->
+                    <svg id="icon-pause" class="w-5 h-5 text-white hidden" fill="currentColor" viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>
+                </button>
+                <button id="btn-reset" class="w-10 h-10 rounded-full bg-gray-800 hover:bg-gray-700 flex items-center justify-center border border-gray-600 transition-all text-gray-400 hover:text-white">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </button>
+            </div>
+
+            <!-- Real-time Telemetry -->
+            <div class="flex items-center gap-6 bg-gray-900/50 px-4 py-2 rounded-lg border border-gray-800 shrink-0">
+                <div class="flex flex-col">
+                    <span class="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Load (kN)</span>
+                    <span id="out-force" class="text-white font-mono font-medium text-base">0.00</span>
+                </div>
+                <div class="h-6 w-px bg-gray-700"></div>
+                <div class="flex flex-col">
+                    <span id="lbl-stress" class="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Stress (MPa)</span>
+                    <span id="out-stress" class="text-white font-mono font-medium text-base">0.00</span>
+                </div>
+                <div class="h-6 w-px bg-gray-700"></div>
+                <div class="flex flex-col">
+                    <span id="lbl-strain" class="text-[10px] text-gray-500 uppercase tracking-widest font-semibold">Strain (%)</span>
+                    <span id="out-strain" class="text-white font-mono font-medium text-base">0.00</span>
+                </div>
+            </div>
+
+            <!-- Parameters Sliders -->
+            <div class="flex-1 flex flex-row items-center gap-6 min-w-[300px]">
+                <!-- Force Slider -->
+                <div class="flex-1 flex flex-col gap-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Max Force (F)</span>
+                        <div class="flex items-baseline gap-1">
+                            <input type="number" id="inp-force" value="100" min="10" max="500" class="w-12 text-sm">
+                            <span class="text-xs text-gray-500">kN</span>
+                        </div>
+                    </div>
+                    <input type="range" id="slider-force" min="10" max="500" value="100" class="w-full">
+                </div>
+
+                <!-- Modulus Slider -->
+                <div class="flex-1 flex flex-col gap-1">
+                    <div class="flex justify-between items-center">
+                        <span class="text-[10px] text-gray-400 uppercase tracking-widest font-semibold">Young's Mod. (E)</span>
+                        <div class="flex items-baseline gap-1">
+                            <input type="number" id="inp-modulus" value="200" min="50" max="400" class="w-12 text-sm">
+                            <span class="text-xs text-gray-500">GPa</span>
+                        </div>
+                    </div>
+                    <input type="range" id="slider-modulus" min="50" max="400" value="200" class="w-full">
+                </div>
+            </div>
+
+            <!-- Segmented Toggles -->
+            <div class="flex bg-gray-900 rounded-lg p-1 border border-gray-700 shrink-0">
+                <button id="toggle-grid" class="px-3 py-1 rounded text-[11px] font-medium bg-gray-700 text-white shadow-inner">
+                    Grid
+                </button>
+                <button id="toggle-labels" class="px-3 py-1 rounded text-[11px] font-medium text-gray-400 hover:text-white">
+                    Labels
+                </button>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        // State variables
+        let state = {
+            mode: 'tensile', // 'tensile' or 'bend'
+            playing: false,
+            progress: 0, // 0.0 to 1.0
+            maxForce: 100, // kN
+            youngsModulus: 200, // GPa
+            showGrid: true,
+            showLabels: false,
+            hasFractured: false
+        };
+
+        // DOM Elements
+        const canvasSim = document.getElementById('sim-canvas');
+        const ctxSim = canvasSim.getContext('2d');
+        const canvasGraph = document.getElementById('graph-canvas');
+        const ctxGraph = canvasGraph.getContext('2d');
+
+        // UI Elements
+        const btnTensile = document.getElementById('btn-tensile');
+        const btnBend = document.getElementById('btn-bend');
+        const btnPlay = document.getElementById('btn-play');
+        const iconPlay = document.getElementById('icon-play');
+        const iconPause = document.getElementById('icon-pause');
+        const btnReset = document.getElementById('btn-reset');
+        
+        const sliderForce = document.getElementById('slider-force');
+        const inpForce = document.getElementById('inp-force');
+        const sliderModulus = document.getElementById('slider-modulus');
+        const inpModulus = document.getElementById('inpModulus');
+        
+        const outForce = document.getElementById('out-force');
+        const outStress = document.getElementById('out-stress');
+        const outStrain = document.getElementById('out-strain');
+        
+        const lblStress = document.getElementById('lbl-stress');
+        const lblStrain = document.getElementById('lbl-strain');
+        const simReadout = document.getElementById('sim-readout');
+        const graphTitle = document.getElementById('graph-title');
+        
+        const timeline = document.getElementById('timeline');
+        const timelineFill = document.getElementById('timeline-fill');
+
+        const toggleGrid = document.getElementById('toggle-grid');
+        const toggleLabels = document.getElementById('toggle-labels');
+
+        // Window resize handler
+        function resizeCanvases() {
+            const simRect = canvasSim.parentElement.getBoundingClientRect();
+            canvasSim.width = simRect.width;
+            canvasSim.height = simRect.height;
+
+            const graphRect = canvasGraph.parentElement.getBoundingClientRect();
+            canvasGraph.width = graphRect.width;
+            canvasGraph.height = graphRect.height;
+            draw();
+        }
+        window.addEventListener('resize', resizeCanvases);
+
+        // Mode Toggles
+        btnTensile.addEventListener('click', () => setMode('tensile'));
+        btnBend.addEventListener('click', () => setMode('bend'));
+
+        function setMode(newMode) {
+            state.mode = newMode;
+            if (newMode === 'tensile') {
+                btnTensile.className = "px-4 py-1.5 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]";
+                btnBend.className = "px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-400 hover:text-white";
+                graphTitle.innerText = "Stress vs. Strain";
+                lblStress.innerText = "Stress (MPa)";
+                lblStrain.innerText = "Strain (%)";
+            } else {
+                btnBend.className = "px-4 py-1.5 rounded-md text-sm font-medium transition-colors bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.4)]";
+                btnTensile.className = "px-4 py-1.5 rounded-md text-sm font-medium transition-colors text-gray-400 hover:text-white";
+                graphTitle.innerText = "Bending Test Results";
+                lblStress.innerText = "Max Stress (MPa)";
+                lblStrain.innerText = "Deflect. (mm)";
+            }
+            resetSim();
+        }
+
+        // Play/Pause & Reset
+        btnPlay.addEventListener('click', () => {
+            if (state.hasFractured) resetSim();
+            state.playing = !state.playing;
+            updatePlayIcon();
+        });
+
+        btnReset.addEventListener('click', resetSim);
+
+        function updatePlayIcon() {
+            if (state.playing) {
+                iconPlay.classList.add('hidden');
+                iconPause.classList.remove('hidden');
+                btnPlay.classList.replace('bg-pink-600', 'bg-red-600');
+            } else {
+                iconPlay.classList.remove('hidden');
+                iconPause.classList.add('hidden');
+                btnPlay.classList.replace('bg-red-600', 'bg-pink-600');
+            }
+        }
+
+        function resetSim() {
+            state.playing = false;
+            state.progress = 0;
+            state.hasFractured = false;
+            updatePlayIcon();
+            draw();
+        }
+
+        // Scrubber Interaction
+        let isScrubbing = false;
+        timeline.addEventListener('mousedown', (e) => { isScrubbing = true; updateProgressFromMouse(e); });
+        window.addEventListener('mousemove', (e) => { if (isScrubbing) updateProgressFromMouse(e); });
+        window.addEventListener('mouseup', () => { isScrubbing = false; });
+
+        function updateProgressFromMouse(e) {
+            const rect = timeline.getBoundingClientRect();
+            let p = (e.clientX - rect.left) / rect.width;
+            p = Math.max(0, Math.min(1, p));
+            state.progress = p;
+            state.hasFractured = (p >= 1.0);
+            if(state.hasFractured) state.playing = false;
+            updatePlayIcon();
+            draw();
+        }
+
+        // Params Handlers
+        sliderForce.addEventListener('input', (e) => {
+            state.maxForce = parseFloat(e.target.value);
+            inpForce.value = state.maxForce;
+            draw();
+        });
+        document.getElementById('inp-force').addEventListener('change', (e) => {
+            state.maxForce = parseFloat(e.target.value);
+            sliderForce.value = state.maxForce;
+            draw();
+        });
+
+        sliderModulus.addEventListener('input', (e) => {
+            state.youngsModulus = parseFloat(e.target.value);
+            document.getElementById('inp-modulus').value = state.youngsModulus;
+            draw();
+        });
+        document.getElementById('inp-modulus').addEventListener('change', (e) => {
+            state.youngsModulus = parseFloat(e.target.value);
+            sliderModulus.value = state.youngsModulus;
+            draw();
+        });
+
+        // Toggles
+        toggleGrid.addEventListener('click', () => {
+            state.showGrid = !state.showGrid;
+            toggleGrid.className = state.showGrid ? "px-3 py-1 rounded text-[11px] font-medium bg-gray-700 text-white shadow-inner" : "px-3 py-1 rounded text-[11px] font-medium text-gray-400 hover:text-white";
+            draw();
+        });
+        toggleLabels.addEventListener('click', () => {
+            state.showLabels = !state.showLabels;
+            toggleLabels.className = state.showLabels ? "px-3 py-1 rounded text-[11px] font-medium bg-gray-700 text-white shadow-inner" : "px-3 py-1 rounded text-[11px] font-medium text-gray-400 hover:text-white";
+            draw();
+        });
+
+        let lastTime = 0;
+        function loop(timestamp) {
+            if (state.playing && !state.hasFractured) {
+                const dt = timestamp - lastTime;
+                state.progress += 0.001 * (60/(1000/dt)); // scale by frame time
+                if (state.progress >= 1) {
+                    state.progress = 1;
+                    state.hasFractured = true;
+                    state.playing = false;
+                    updatePlayIcon();
+                }
+                draw();
+            }
+            lastTime = timestamp;
+            requestAnimationFrame(loop);
+        }
+
+        // Draw Function Router
+        function draw() {
+            ctxSim.clearRect(0, 0, canvasSim.width, canvasSim.height);
+            ctxGraph.clearRect(0, 0, canvasGraph.width, canvasGraph.height);
+            
+            // Calculate Physics
+            const p = state.progress;
+            
+            // Material properties scaling curve (Simulated)
+            let loadFactor = 0;
+            if (p < 0.15) {
+                // Linear Elastic Region (LER)
+                loadFactor = (p / 0.15) * 0.6; 
+            } else {
+                // Symmetrical plastic region. Max added height is 0.15 (1/4 of 0.6)
+                const t = (p - 0.15) / 0.85;
+                loadFactor = 0.6 + (0.6 * t * (1 - t)); 
+            }
+
+            if (state.hasFractured) loadFactor = 0; // Snap to 0 on fracture
+
+            const currentForce = loadFactor * state.maxForce;
+            
+            // E affects how much it strains for a given load
+            // Higher E = less strain. Baseline E=200.
+            const eFactor = 200 / state.youngsModulus; 
+            const currentStrain = p * eFactor; // visually scaled strain
+
+            updateTelemetry(currentForce, loadFactor, currentStrain, p);
+
+            if (state.showGrid) drawGrid(ctxSim, canvasSim);
+            if (state.showGrid) drawGrid(ctxGraph, canvasGraph, true);
+
+            if (state.mode === 'tensile') {
+                drawTensileSim(p, currentStrain);
+                drawGraph(p, loadFactor, currentStrain, "Strain (ε)", "Stress (σ)");
+            } else {
+                drawBendSim(p, loadFactor, currentStrain);
+                drawBendStats(p, currentForce, currentStrain);
+            }
+
+            // Update UI Scrubber
+            timelineFill.style.width = `${state.progress * 100}%`;
+            if(state.hasFractured) {
+                timelineFill.style.background = '#ef4444'; // Red if broken
+                timelineFill.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.8)';
+            } else {
+                timelineFill.style.background = '#ec4899';
+                timelineFill.style.boxShadow = '0 0 10px rgba(236, 72, 153, 0.5)';
+            }
+        }
+
+        function updateTelemetry(force, loadFactor, strain, p) {
+            outForce.innerText = state.hasFractured ? "0.00" : force.toFixed(2);
+            
+            if (state.mode === 'tensile') {
+                // Arbitrary cross section area A = 0.05 m^2 for visual scaling
+                const stress = (force / 0.05);
+                outStress.innerText = state.hasFractured ? "0.00" : stress.toFixed(1);
+                outStrain.innerText = (strain * 10).toFixed(2);
+                simReadout.innerText = `Elongation: ${(strain * 50).toFixed(2)} mm`;
+            } else {
+                // Bend formulas: max stress = 3FL/(2bd^2), deflect ~ FL^3/(48EI)
+                const stress = force * 2.5; // scaling for visualization
+                outStress.innerText = state.hasFractured ? "0.00" : stress.toFixed(1);
+                outStrain.innerText = (strain * 40).toFixed(2); // deflection
+                simReadout.innerText = `Center Load: ${force.toFixed(1)} kN`;
+            }
+        }
+
+        function drawGrid(ctx, canvas, isGraph=false) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+            ctx.lineWidth = 1;
+            
+            const step = isGraph ? 40 : 50;
+            
+            ctx.beginPath();
+            for (let x = 0; x <= canvas.width; x += step) {
+                ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height);
+            }
+            for (let y = 0; y <= canvas.height; y += step) {
+                ctx.moveTo(0, y); ctx.lineTo(canvas.width, y);
+            }
+            ctx.stroke();
+            
+            if (isGraph) {
+                // Axes
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                // Y-axis
+                ctx.moveTo(40, 20); ctx.lineTo(40, canvas.height - 40);
+                // X-axis
+                ctx.lineTo(canvas.width - 20, canvas.height - 40);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        function drawTensileSim(p, strain) {
+            const w = canvasSim.width;
+            const h = canvasSim.height;
+            const cx = w / 2;
+            const cy = h / 2;
+
+            // Base dimensions
+            const L0 = h * 0.4;
+            const w0 = L0 * 0.25;
+            
+            // Deformation calculations
+            const elongation = L0 * (strain * 0.5); // Visual scale
+            const currentL = L0 + elongation;
+            
+            // Necking calculation
+            // Poisson ratio effect + localized necking near fracture
+            let neckingWidth = w0;
+            if (p > 0.575 && !state.hasFractured) {
+                const neckProgress = (p - 0.575) / 0.425;
+                neckingWidth = w0 * (1 - 0.75 * neckProgress); // Much more aggressive necking pinch
+            }
+            
+            const topY = cy - currentL / 2;
+            const botY = cy + currentL / 2;
+
+            ctxSim.save();
+
+            if (state.hasFractured) {
+                // Draw broken pieces
+                const gap = 30;
+                drawTensilePiece(cx, topY, cy - gap/2, w0, neckingWidth*0.8, true);
+                drawTensilePiece(cx, cy + gap/2, botY, neckingWidth*0.8, w0, false);
+            } else {
+                // Stress Heat Map Gradient
+                const stressGrad = ctxSim.createLinearGradient(0, topY, 0, botY);
+                if (p > 0.15) {
+                    const intensity = Math.min(1, (p - 0.15) / 0.85); // 0 to 1 as it enters plastic region
+                    stressGrad.addColorStop(0, '#1e293b');
+                    stressGrad.addColorStop(0.5, `rgba(${30 + 180 * intensity}, 41, 59, 1)`); // Shifts to glowing red/orange at center
+                    stressGrad.addColorStop(1, '#1e293b');
+                } else {
+                    stressGrad.addColorStop(0, '#1e293b');
+                    stressGrad.addColorStop(1, '#1e293b');
+                }
+
+                // Draw solid material
+                ctxSim.fillStyle = stressGrad;
+                ctxSim.strokeStyle = '#3b82f6';
+                ctxSim.lineWidth = 2;
+                ctxSim.shadowColor = p > 0.575 ? '#ef4444' : '#3b82f6'; // Change glow color during necking
+                ctxSim.shadowBlur = p > 0.8 ? 20 : (p > 0.15 ? 10 : 5);
+
+                ctxSim.beginPath();
+                // Left edge (curved inwards for necking)
+                ctxSim.moveTo(cx - w0/2, topY);
+                ctxSim.quadraticCurveTo(cx - neckingWidth/2, cy, cx - w0/2, botY);
+                // Bottom edge
+                ctxSim.lineTo(cx + w0/2, botY);
+                // Right edge
+                ctxSim.quadraticCurveTo(cx + neckingWidth/2, cy, cx + w0/2, topY);
+                // Top edge
+                ctxSim.closePath();
+
+                // Material Fill + Grid pattern inside
+                ctxSim.fill();
+                ctxSim.stroke();
+
+                // Gauge marks (horizontal lines) to clearly show elongation and localized strain
+                const numLines = 12;
+                ctxSim.strokeStyle = 'rgba(255, 255, 255, 0.3)';
+                ctxSim.shadowBlur = 0;
+                ctxSim.beginPath();
+                for(let i=1; i<numLines; i++) {
+                    let t = i / numLines; // 0 to 1 along length
+                    
+                    // Localize strain to the center when necking occurs
+                    let displacedT = t;
+                    if (p > 0.575) {
+                        const neckIntensity = (p - 0.575) / 0.425;
+                        // Pull lines towards the center (t=0.5) to show stretching
+                        const distToCenter = t - 0.5;
+                        displacedT = 0.5 + distToCenter * (1 + 0.8 * neckIntensity * (1 - Math.abs(distToCenter)));
+                    }
+
+                    let lineY = topY + displacedT * currentL;
+                    
+                    // Calculate current width at this exact Y to keep lines inside the shape
+                    let distFromCenterSq = Math.pow(Math.abs(displacedT - 0.5) * 2, 2); 
+                    let currentW = neckingWidth + (w0 - neckingWidth) * distFromCenterSq;
+                    
+                    ctxSim.moveTo(cx - currentW/2 + 2, lineY);
+                    ctxSim.lineTo(cx + currentW/2 - 2, lineY);
+                }
+                ctxSim.stroke();
+            }
+
+            // Draw Grips
+            ctxSim.fillStyle = '#475569';
+            ctxSim.shadowBlur = 0;
+            const gripH = 40;
+            const gripW = w0 * 1.8;
+            
+            // Top Grip
+            ctxSim.fillRect(cx - gripW/2, topY - gripH, gripW, gripH);
+            // Bottom Grip
+            ctxSim.fillRect(cx - gripW/2, botY, gripW, gripH);
+
+            // Draw Force Arrows
+            if (p > 0 && !state.hasFractured) {
+                drawArrow(cx, topY - gripH - 10, cx, topY - gripH - 50, '#ec4899');
+                drawArrow(cx, botY + gripH + 10, cx, botY + gripH + 50, '#ec4899');
+            }
+
+            // Labels
+            if (state.showLabels) {
+                ctxSim.fillStyle = '#9ca3af';
+                ctxSim.font = '12px Inter';
+                ctxSim.fillText('Fixed Grip', cx + gripW/2 + 10, topY - gripH/2);
+                ctxSim.fillText('Moving Grip', cx + gripW/2 + 10, botY + gripH/2);
+                if(!state.hasFractured && p > 0.575) {
+                    ctxSim.fillStyle = '#fca5a5';
+                    ctxSim.fillText('Necking Region', cx + w0/2 + 20, cy);
+                }
+            }
+
+            ctxSim.restore();
+        }
+
+        function drawTensilePiece(cx, startY, endY, startW, endW, isTop) {
+            ctxSim.fillStyle = '#1e293b';
+            ctxSim.strokeStyle = '#ef4444'; // Red outline for broken edge
+            ctxSim.lineWidth = 2;
+            
+            ctxSim.beginPath();
+            ctxSim.moveTo(cx - startW/2, startY);
+            
+            // Curve down to broken edge
+            const cY = (startY + endY) / 2;
+            ctxSim.quadraticCurveTo(cx - endW/2, cY, cx - endW/2, endY);
+            
+            // Jagged broken edge
+            ctxSim.lineTo(cx - endW/4, endY + (isTop?5:-5));
+            ctxSim.lineTo(cx, endY);
+            ctxSim.lineTo(cx + endW/4, endY + (isTop?5:-5));
+            ctxSim.lineTo(cx + endW/2, endY);
+
+            // Curve back up
+            ctxSim.quadraticCurveTo(cx + endW/2, cY, cx + startW/2, startY);
+            ctxSim.closePath();
+            
+            ctxSim.fill();
+            ctxSim.stroke();
+        }
+
+        function drawBendSim(p, loadFactor, strain) {
+            const w = canvasSim.width;
+            const h = canvasSim.height;
+            const cx = w / 2;
+            const cy = h / 2 + 50; // offset down for supports
+
+            const beamL = w * 0.6;
+            const beamThick = 24;
+            
+            // Deflection calculation
+            // Exaggerated visual deflection - reduced for more realistic look
+            const maxDeflection = 25 * strain; 
+            
+            ctxSim.save();
+
+            // Draw Supports
+            const supW = 20;
+            const supH = 30;
+            ctxSim.fillStyle = '#475569';
+            
+            // Left Support (Triangle)
+            const lx = cx - beamL/2;
+            ctxSim.beginPath();
+            ctxSim.moveTo(lx, cy);
+            ctxSim.lineTo(lx - supW/2, cy + supH);
+            ctxSim.lineTo(lx + supW/2, cy + supH);
+            ctxSim.fill();
+
+            // Right Support
+            const rx = cx + beamL/2;
+            ctxSim.beginPath();
+            ctxSim.moveTo(rx, cy);
+            ctxSim.lineTo(rx - supW/2, cy + supH);
+            ctxSim.lineTo(rx + supW/2, cy + supH);
+            ctxSim.fill();
+
+            if (state.hasFractured) {
+                // Broken Beam
+                ctxSim.fillStyle = '#1e293b';
+                ctxSim.strokeStyle = '#ef4444';
+                ctxSim.lineWidth = 2;
+                
+                const dropY = maxDeflection + 20; // Fixed: Apply positive drop down
+                
+                // Left half
+                ctxSim.beginPath();
+                ctxSim.moveTo(lx - 20, cy - beamThick);
+                ctxSim.lineTo(cx - 5, cy - beamThick + dropY);
+                ctxSim.lineTo(cx - 5, cy + dropY);
+                ctxSim.lineTo(lx - 20, cy);
+                ctxSim.closePath();
+                ctxSim.fill(); ctxSim.stroke();
+
+                // Right half
+                ctxSim.beginPath();
+                ctxSim.moveTo(rx + 20, cy - beamThick);
+                ctxSim.lineTo(cx + 5, cy - beamThick + dropY);
+                ctxSim.lineTo(cx + 5, cy + dropY);
+                ctxSim.lineTo(rx + 20, cy);
+                ctxSim.closePath();
+                ctxSim.fill(); ctxSim.stroke();
+
+            } else {
+                // Bending Beam
+                ctxSim.fillStyle = '#1e293b';
+                ctxSim.strokeStyle = '#3b82f6';
+                ctxSim.lineWidth = 2;
+                ctxSim.shadowColor = '#3b82f6';
+                ctxSim.shadowBlur = p > 0.8 ? 15 : 5;
+
+                ctxSim.beginPath();
+                // Bottom Edge (Quadratic curve simulating bend)
+                ctxSim.moveTo(lx - 20, cy);
+                ctxSim.quadraticCurveTo(cx, cy + maxDeflection * 2, rx + 20, cy);
+                
+                // Right flat
+                ctxSim.lineTo(rx + 20, cy - beamThick);
+                
+                // Top Edge
+                ctxSim.quadraticCurveTo(cx, cy - beamThick + maxDeflection * 2, lx - 20, cy - beamThick);
+                ctxSim.closePath();
+
+                ctxSim.fill();
+                ctxSim.stroke();
+
+                // Draw Load Force Arrow
+                if (p > 0) {
+                    const arrowY = cy - beamThick + maxDeflection - 10;
+                    drawArrow(cx, arrowY - 60, cx, arrowY, '#ec4899');
+                    
+                    if(state.showLabels) {
+                        ctxSim.fillStyle = '#ec4899';
+                        ctxSim.font = '12px Inter';
+                        ctxSim.fillText('Applied Load', cx + 15, arrowY - 30);
+                    }
+                }
+            }
+
+            if(state.showLabels) {
+                ctxSim.fillStyle = '#9ca3af';
+                ctxSim.font = '12px Inter';
+                ctxSim.fillText('Support A', lx - 25, cy + supH + 15);
+                ctxSim.fillText('Support B', rx - 25, cy + supH + 15);
+            }
+
+            ctxSim.restore();
+        }
+
+        function drawBendStats(p, force, strain) {
+            const w = canvasGraph.width;
+            const h = canvasGraph.height;
+            ctxGraph.save();
+
+            // Clear background slightly for better readability
+            ctxGraph.fillStyle = 'rgba(10, 15, 24, 0.7)';
+            ctxGraph.fillRect(0, 0, w, h);
+
+            const maxDeflect = (state.maxForce * 0.4).toFixed(1);
+
+            ctxGraph.fillStyle = '#ffffff';
+            ctxGraph.font = 'bold 20px Inter';
+            ctxGraph.fillText("3-Point Bend Telemetry", 40, 70);
+            
+            ctxGraph.beginPath();
+            ctxGraph.strokeStyle = '#1f2937';
+            ctxGraph.moveTo(40, 90);
+            ctxGraph.lineTo(w - 40, 90);
+            ctxGraph.stroke();
+
+            let yOffset = 130;
+            const rowGap = 45;
+
+            const addRow = (label, value, unit, color='#3b82f6') => {
+                ctxGraph.fillStyle = '#9ca3af';
+                ctxGraph.font = '14px Inter';
+                ctxGraph.fillText(label, 40, yOffset);
+                
+                ctxGraph.fillStyle = color;
+                ctxGraph.font = 'bold 18px Inter';
+                ctxGraph.fillText(value + " " + unit, 240, yOffset);
+                yOffset += rowGap;
+            };
+
+            addRow("Live Applied Load:", force.toFixed(2), "kN", state.hasFractured ? "#ef4444" : "#3b82f6");
+            addRow("Max Load Capacity (Failure):", state.maxForce.toFixed(2), "kN", "#ec4899");
+            addRow("Live Deflection:", (strain * 40).toFixed(2), "mm", state.hasFractured ? "#ef4444" : "#3b82f6");
+            addRow("Estimated Max Deflection:", maxDeflect, "mm", "#ec4899");
+            addRow("Material Flexural Modulus:", state.youngsModulus.toFixed(1), "GPa", "#e5e7eb");
+            
+            let status = "Linear Elastic Bending";
+            let statusColor = "#3b82f6";
+            if (state.hasFractured) {
+                status = "CATASTROPHIC FAILURE";
+                statusColor = "#ef4444";
+            } else if (p > 0.15) {
+                status = "Plastic Yielding";
+                statusColor = "#ec4899";
+            }
+            
+            yOffset += 10;
+            addRow("Structural Status:", status, "", statusColor);
+
+            ctxGraph.restore();
+        }
+
+        function drawArrow(fromx, fromy, tox, toy, color) {
+            const headlen = 10; 
+            const dx = tox - fromx;
+            const dy = toy - fromy;
+            const angle = Math.atan2(dy, dx);
+            
+            ctxSim.strokeStyle = color;
+            ctxSim.fillStyle = color;
+            ctxSim.lineWidth = 3;
+            ctxSim.shadowBlur = 10;
+            ctxSim.shadowColor = color;
+            
+            ctxSim.beginPath();
+            ctxSim.moveTo(fromx, fromy);
+            ctxSim.lineTo(tox, toy);
+            ctxSim.stroke();
+            
+            ctxSim.beginPath();
+            ctxSim.moveTo(tox, toy);
+            ctxSim.lineTo(tox - headlen * Math.cos(angle - Math.PI / 6), toy - headlen * Math.sin(angle - Math.PI / 6));
+            ctxSim.lineTo(tox - headlen * Math.cos(angle + Math.PI / 6), toy - headlen * Math.sin(angle + Math.PI / 6));
+            ctxSim.closePath();
+            ctxSim.fill();
+        }
+
+        function drawGraph(p, currentLoadFactor, currentStrain, xLabel, yLabel) {
+            const w = canvasGraph.width;
+            const h = canvasGraph.height;
+            const originX = 40;
+            const originY = h - 40;
+            
+            // Graph drawing area sizes
+            const gw = w - 60;
+            const gh = h - 60;
+
+            ctxGraph.save();
+
+            // Axis Labels
+            ctxGraph.fillStyle = '#9ca3af';
+            ctxGraph.font = '10px Inter';
+            ctxGraph.fillText(xLabel, originX + gw/2 - 20, originY + 25);
+            
+            ctxGraph.save();
+            ctxGraph.translate(15, originY - gh/2 + 20);
+            ctxGraph.rotate(-Math.PI/2);
+            ctxGraph.fillText(yLabel, 0, 0);
+            ctxGraph.restore();
+
+            // Setup common scaling
+            const eF = 200 / state.youngsModulus;
+            const maxXScale = eF * 1.05; // Auto-scale X so fracture (1.0 * eF) is near the right edge
+
+            // Helper to get exact curve coordinates mapping
+            const getCurvePoint = (tp) => {
+                let lf = 0;
+                if (tp < 0.15) {
+                    lf = (tp / 0.15) * 0.6;
+                } else {
+                    const t = (tp - 0.15) / 0.85;
+                    lf = 0.6 + (0.6 * t * (1 - t));
+                }
+                const sx = tp * eF;
+                const px = originX + (sx / maxXScale) * gw;
+                const py = originY - (lf * gh);
+                return { px, py, lf, sx, tp };
+            };
+
+            const ptYield = getCurvePoint(0.15);
+            const ptUTS = getCurvePoint(0.575); // Symmetrical peak
+            const ptFrac = getCurvePoint(1.0);
+
+            // Draw Background Regions (Elastic / Plastic)
+            if (state.mode === 'tensile') {
+                // Elastic Region
+                ctxGraph.fillStyle = 'rgba(59, 130, 246, 0.08)'; // Bright Faint Blue
+                ctxGraph.fillRect(originX, originY - gh, ptYield.px - originX, gh);
+                // Plastic Region
+                ctxGraph.fillStyle = 'rgba(236, 72, 153, 0.05)'; // Faint Pink
+                ctxGraph.fillRect(ptYield.px, originY - gh, ptFrac.px - ptYield.px, gh);
+
+                // Region text
+                ctxGraph.fillStyle = 'rgba(156, 163, 175, 0.5)';
+                ctxGraph.font = '10px Inter';
+                ctxGraph.fillText("Elastic", originX + 10, originY - gh + 20);
+                ctxGraph.fillText("Plastic Region (Strain Hardening & Necking)", ptYield.px + 10, originY - gh + 20);
+
+                // 2% Offset Yield Line
+                const offsetStrain = 0.08 * eF; // Visual 2% offset
+                const offsetPx = (offsetStrain / maxXScale) * gw;
+                const slope = (originY - ptYield.py) / (ptYield.px - originX);
+                
+                // Find where the offset line intersects the generated curve
+                let intersectPx = ptYield.px + offsetPx;
+                let intersectPy = originY - slope * (intersectPx - (originX + offsetPx));
+                
+                for (let i = 15; i <= 100; i++) {
+                    let tp = i / 100;
+                    const pt = getCurvePoint(tp);
+                    const lineY = originY - slope * (pt.px - (originX + offsetPx));
+                    if (lineY <= pt.py) { // Canvas Y is inverted, line crosses 'above' the curve
+                        intersectPx = pt.px;
+                        intersectPy = pt.py;
+                        break;
+                    }
+                }
+
+                ctxGraph.beginPath();
+                ctxGraph.setLineDash([4, 4]);
+                ctxGraph.strokeStyle = 'rgba(156, 163, 175, 0.4)'; // Gray dashed
+                ctxGraph.moveTo(originX + offsetPx, originY);
+                ctxGraph.lineTo(intersectPx, intersectPy);
+                ctxGraph.stroke();
+                ctxGraph.setLineDash([]);
+                
+                ctxGraph.fillStyle = 'rgba(156, 163, 175, 0.7)';
+                ctxGraph.fillText("2% Offset", originX + offsetPx + 5, originY - 5);
+            }
+
+            // Generate full curve based on params
+            ctxGraph.beginPath();
+            ctxGraph.strokeStyle = '#3b82f6';
+            ctxGraph.lineWidth = 3;
+            ctxGraph.lineJoin = 'round';
+            ctxGraph.shadowBlur = 8;
+            ctxGraph.shadowColor = '#3b82f6';
+
+            ctxGraph.moveTo(originX, originY);
+
+            // Simulation points for the curve
+            const points = 100;
+            let currentX = originX;
+            let currentY = originY;
+
+            for(let i=0; i<=points; i++) {
+                let tp = i / points;
+                if (tp > p) break; // Draw only up to current progress
+
+                const pt = getCurvePoint(tp);
+                ctxGraph.lineTo(pt.px, pt.py);
+                currentX = pt.px;
+                currentY = pt.py;
+            }
+            ctxGraph.stroke();
+
+            // Draw glowing head dot
+            if (p > 0 && !state.hasFractured) {
+                ctxGraph.beginPath();
+                ctxGraph.fillStyle = '#ec4899';
+                ctxGraph.shadowColor = '#ec4899';
+                ctxGraph.shadowBlur = 15;
+                ctxGraph.arc(currentX, currentY, 6, 0, Math.PI * 2);
+                ctxGraph.fill();
+            } else if (state.hasFractured) {
+                // Draw fracture cross
+                ctxGraph.strokeStyle = '#ef4444';
+                ctxGraph.lineWidth = 2;
+                ctxGraph.shadowBlur = 10;
+                ctxGraph.shadowColor = '#ef4444';
+                ctxGraph.beginPath();
+                ctxGraph.moveTo(currentX - 5, currentY - 5);
+                ctxGraph.lineTo(currentX + 5, currentY + 5);
+                ctxGraph.moveTo(currentX + 5, currentY - 5);
+                ctxGraph.lineTo(currentX - 5, currentY + 5);
+                ctxGraph.stroke();
+            }
+
+            // Draw Key Annotations / Markers dynamically as progression hits them
+            const drawMarker = (pt, label, color, align='left', yOff=-10, xOff=8) => {
+                if (p >= pt.tp || state.hasFractured) {
+                    ctxGraph.beginPath();
+                    ctxGraph.fillStyle = color;
+                    ctxGraph.shadowBlur = 0;
+                    ctxGraph.arc(pt.px, pt.py, 4, 0, Math.PI*2);
+                    ctxGraph.fill();
+                    
+                    ctxGraph.fillStyle = 'rgba(255,255,255,0.9)';
+                    ctxGraph.textAlign = align;
+                    // Adjusted text offset depending on alignment
+                    let tX = pt.px + (align==='right' ? -xOff : (align==='center' ? 0 : xOff));
+                    ctxGraph.fillText(label, tX, pt.py + yOff);
+                    ctxGraph.textAlign = 'left'; // reset back to default
+                }
+            };
+
+            ctxGraph.font = '11px Inter';
+            if (state.mode === 'tensile') {
+                drawMarker(ptYield, "Yield Strength", "#3b82f6", 'left', -15, 8);
+                drawMarker(ptUTS, "Ultimate Tensile Strength (UTS)", "#ec4899", 'center', -20, 0);
+                if (p >= 0.575) {
+                    ctxGraph.fillStyle = "rgba(236, 72, 153, 0.8)";
+                    ctxGraph.fillText("Necking Zone", ptUTS.px + 10, ptUTS.py + 25);
+                }
+                drawMarker(ptFrac, "Fracture", "#ef4444", 'right', -10, 10);
+            } else {
+                drawMarker(ptYield, "Elastic Limit", "#3b82f6", 'left', -15, 8);
+                drawMarker(ptUTS, "Peak Load", "#ec4899", 'center', -20, 0);
+                drawMarker(ptFrac, "Failure", "#ef4444", 'right', -10, 10);
+            }
+
+            ctxGraph.restore();
+        }
+
+        // Initialize
+        setTimeout(() => {
+            resizeCanvases();
+            requestAnimationFrame(loop);
+        }, 100);
+
+    </script>
+</body>
+</html>
