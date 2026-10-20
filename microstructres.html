@@ -1,0 +1,688 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Microstructure Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        slate: { 850: '#141e33', 900: '#0f172a', 950: '#020617' },
+                        pink: { 500: '#ec4899', 600: '#db2777' },
+                        blue: { 500: '#3b82f6', 600: '#2563eb' }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'sans-serif'],
+                        mono: ['ui-monospace', 'SFMono-Regular', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body { margin: 0; overflow: hidden; background-color: #020617; color: white; font-family: 'Inter', sans-serif; }
+        
+        /* Custom UI Elements */
+        input[type=range] { -webkit-appearance: none; width: 100%; background: transparent; height: 10px; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #3b82f6; cursor: pointer; margin-top: -6px; box-shadow: 0 0 10px rgba(59, 130, 246, 0.8); }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #334155; border-radius: 2px; }
+        input[type=range]:focus { outline: none; }
+        
+        .struct-active { background-color: #3b82f6 !important; color: white !important; font-weight: 600; }
+        .glass-panel { background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); border: 1px solid rgba(51, 65, 85, 0.8); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5); }
+        
+        /* KaTeX Overrides for UI */
+        .katex-display { margin: 0.25em 0 !important; font-size: 1.05em; color: #e2e8f0; }
+        .katex { text-rendering: auto; }
+        
+        #data-overlays::-webkit-scrollbar { width: 4px; }
+        #data-overlays::-webkit-scrollbar-track { background: transparent; }
+        #data-overlays::-webkit-scrollbar-thumb { background: #3b82f6; border-radius: 4px; }
+    </style>
+</head>
+<body class="flex flex-col h-screen select-none">
+
+    <header class="h-12 bg-slate-900 border-b border-slate-800 flex items-center justify-between px-4 shrink-0 z-20 shadow-md">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-blue-500/20 flex items-center justify-center border border-blue-500/50">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+            </div>
+            <div class="flex flex-col justify-center">
+                <h1 class="text-sm font-bold tracking-tight text-white leading-tight">Microstructure Explorer</h1>
+                <p class="text-[10px] text-slate-400 leading-tight">Interactive 3D lattice & property visualization.</p>
+            </div>
+        </div>
+
+        <div class="flex gap-2 h-8">
+            <div class="flex bg-slate-800 rounded p-1 border border-slate-700 shadow-inner">
+                <button id="btn-mode-atoms" class="px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors" onclick="setMode('atoms')">Atoms</button>
+                <button id="btn-mode-ions" class="px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors" onclick="setMode('ions')">Ions</button>
+            </div>
+            <div class="flex bg-slate-800 rounded p-1 border border-slate-700 shadow-inner">
+                <button id="btn-view-3d" class="px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors" onclick="setView('3D')">3D</button>
+                <button id="btn-view-2d" class="px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors" onclick="setView('2D')">2D Map</button>
+            </div>
+        </div>
+    </header>
+
+    <main class="flex-1 relative bg-slate-950 w-full overflow-hidden" id="main-container">
+        <!-- 3D Canvas -->
+        <div id="canvas-container" class="absolute inset-0 cursor-move transition-opacity duration-300"></div>
+        <div id="html-annotations" class="absolute inset-0 pointer-events-none z-10 transition-opacity duration-300"></div>
+        
+        <!-- 2D Canvas (Hidden by default) -->
+        <div id="canvas-2d-container" class="absolute inset-0 hidden flex-col items-center justify-center bg-slate-950 z-10">
+            <canvas id="canvas-2d" class="w-full h-full max-w-2xl max-h-[80vh]"></canvas>
+            <div class="absolute top-4 left-1/2 transform -translate-x-1/2 bg-slate-900/80 px-4 py-1.5 rounded-full border border-slate-700 text-xs text-blue-300 backdrop-blur pointer-events-none">
+                Top-Down Orthographic Projection
+            </div>
+        </div>
+
+        <!-- Data Formula Overlay -->
+        <div class="absolute top-4 bottom-4 left-4 flex flex-col gap-2 z-10 pointer-events-none" id="data-overlays"></div>
+
+        <!-- Legend Overlay -->
+        <div class="absolute bottom-4 right-4 glass-panel rounded-lg p-3 pointer-events-none z-10 flex flex-col gap-2 border border-slate-700 hidden shadow-xl" id="legend-overlay">
+            <!-- Populated via JS -->
+        </div>
+    </main>
+
+    <footer class="bg-slate-900 border-t border-slate-700 p-2 z-20 flex flex-col gap-2 shrink-0 w-full shadow-[0_-10px_30px_rgba(0,0,0,0.5)]">
+        
+        <!-- Row 1: Parameter Configuration Grid -->
+        <div class="flex flex-row w-full gap-2 h-12">
+            <!-- Reset Camera -->
+            <button class="w-12 h-12 shrink-0 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center border border-slate-600 transition-colors shadow-sm" onclick="resetView()" title="Reset Camera">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><polyline points="3 3 3 8 8 8"></polyline></svg>
+            </button>
+            
+            <!-- Unit Cell Dropdown (REPLACED WITH TOGGLE) -->
+            <div class="flex flex-col bg-slate-800 rounded p-1 border border-slate-700 justify-center shrink-0 w-40">
+                <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider mb-0.5 ml-1 text-center">Lattice View</span>
+                <div class="flex bg-slate-900 rounded p-0.5 shadow-inner">
+                    <button id="btn-lat-cut" class="flex-1 px-1 text-[10px] uppercase tracking-wider rounded struct-active transition-colors" onclick="toggleUnitCell('cut')">Unit Cell</button>
+                    <button id="btn-lat-full" class="flex-1 px-1 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors" onclick="toggleUnitCell('full')">Extended</button>
+                </div>
+            </div>
+
+            <!-- Radius Slider -->
+            <div class="flex-[1.5] flex flex-col bg-slate-800 rounded p-1.5 border border-slate-700 justify-center px-3">
+                <div class="flex justify-between items-center w-full mb-1">
+                    <span class="text-[9px] text-slate-400 font-bold uppercase tracking-wider">Atomic Radius (r)</span>
+                    <input type="text" id="radius-input" class="bg-slate-900 border border-slate-600 rounded text-blue-400 text-[10px] font-mono text-center w-10 h-4 outline-none" value="1.0" onchange="updateRadiusFromInput()">
+                </div>
+                <input type="range" id="radius-slider" min="0.1" max="1.0" step="0.05" value="1.0" oninput="updateRadiusFromSlider()">
+            </div>
+
+            <!-- Structure Grid -->
+            <div class="flex-[2] flex bg-slate-800 rounded p-1 border border-slate-700" id="structure-selector">
+                <!-- JS Populated to perfectly fill flex space -->
+            </div>
+        </div>
+
+        <!-- Row 2: Mutually Exclusive Highlights -->
+        <div class="flex w-full bg-slate-800 rounded p-1 border border-slate-700 gap-1 h-9" id="property-buttons">
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded struct-active transition-all" onclick="setProperty('None', this)">None</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('Stacking', this)">Stacking (Layers)</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('N', this)">Atoms / Cell</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('CN', this)">Coord. Num (CN)</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('APF', this)">APF</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('Density', this)">Density</button>
+            <button class="prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all" onclick="setProperty('Radius', this)">Radius Eq.</button>
+        </div>
+
+    </footer>
+
+    <script>
+        const state = {
+            mode: 'atoms', view: '3D', structure: 'SC', radiusScale: 1.0, 
+            unitcellCut: true, activeProperty: 'None'
+        };
+
+        const structures = {
+            atoms: [{ id: 'SC', label: 'Simple Cubic' }, { id: 'BCC', label: 'BCC' }, { id: 'FCC', label: 'FCC' }, { id: 'HCP', label: 'HCP' }],
+            ions: [{ id: 'NaCl', label: 'NaCl (Rock Salt)' }, { id: 'CsCl', label: 'CsCl' }, { id: 'CaF2', label: 'CaF2 (Fluorite)' }]
+        };
+
+        const propertyData = {
+            SC: {
+                Stacking: "AAA...", N: "N = 1 \\text{ atom}", CN: "\\text{CN} = 6",
+                APF: "\\text{APF} = \\frac{1 \\times \\frac{4}{3}\\pi r^3}{a^3} \\approx 0.52",
+                Density: "\\rho = \\frac{n A}{V_c N_A}", Radius: "a = 2r"
+            },
+            BCC: {
+                Stacking: "ABAB...", N: "N = 2 \\text{ atoms}", CN: "\\text{CN} = 8",
+                APF: "\\text{APF} = \\frac{2 \\times \\frac{4}{3}\\pi r^3}{a^3} \\approx 0.68",
+                Density: "\\rho = \\frac{n A}{V_c N_A}", Radius: "a = \\frac{4}{\\sqrt{3}}r"
+            },
+            FCC: {
+                Stacking: "ABCABC...", N: "N = 4 \\text{ atoms}", CN: "\\text{CN} = 12",
+                APF: "\\text{APF} = \\frac{4 \\times \\frac{4}{3}\\pi r^3}{a^3} \\approx 0.74",
+                Density: "\\rho = \\frac{n A}{V_c N_A}", Radius: "a = 2\\sqrt{2}r"
+            },
+            HCP: {
+                Stacking: "ABAB...", N: "N = 6 \\text{ atoms}", CN: "\\text{CN} = 12",
+                APF: "\\text{APF} = \\frac{6 \\times \\frac{4}{3}\\pi r^3}{V_c} \\approx 0.74",
+                Density: "\\rho = \\frac{n A}{V_c N_A}", Radius: "a = 2r \\quad c \\approx 1.633a"
+            },
+            NaCl: {
+                Stacking: "FCC (Cl⁻) + Oct (Na⁺)", N: "4 \\text{ Na}^+ , 4 \\text{ Cl}^-", CN: "\\text{Na}: 6, \\text{Cl}: 6",
+                APF: "\\text{Varies}", Density: "\\rho = \\frac{4 M_{\\text{NaCl}}}{a^3 N_A}", Radius: "a = 2(r_{\\text{Na}} + r_{\\text{Cl}})"
+            },
+            CsCl: {
+                Stacking: "SC (Cl⁻) + Cub (Cs⁺)", N: "1 \\text{ Cs}^+ , 1 \\text{ Cl}^-", CN: "\\text{Cs}: 8, \\text{Cl}: 8",
+                APF: "\\text{Varies}", Density: "\\rho = \\frac{1 M_{\\text{CsCl}}}{a^3 N_A}", Radius: "a = \\frac{2(r_{\\text{Cs}} + r_{\\text{Cl}})}{\\sqrt{3}}"
+            },
+            CaF2: {
+                Stacking: "FCC (Ca²⁺) + Tet (F⁻)", N: "4 \\text{ Ca}^{2+} , 8 \\text{ F}^-", CN: "\\text{Ca}: 8, \\text{F}: 4",
+                APF: "\\text{Varies}", Density: "\\rho = \\frac{4 M_{\\text{CaF}_2}}{a^3 N_A}", Radius: "a = \\frac{4(r_{\\text{Ca}} + r_{\\text{F}})}{\\sqrt{3}}"
+            }
+        };
+
+        let scene, camera, renderer, crystalGroup, controls, capsGroup;
+        let atomsMeshArray = [], capsMeshArray = [], unitCellBox, annotationGroup, labels = [];
+        let cubicPlanes = [], hcpPlanes = [];
+        const A = 4;
+
+        function initThree() {
+            const container = document.getElementById('canvas-container');
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 1000);
+            
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.localClippingEnabled = true;
+            container.appendChild(renderer.domElement);
+
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true; controls.dampingFactor = 0.05;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+            const dir1 = new THREE.DirectionalLight(0xffffff, 0.7); dir1.position.set(10, 15, 10); scene.add(dir1);
+            const dir2 = new THREE.DirectionalLight(0xaaccff, 0.3); dir2.position.set(-10, -5, -10); scene.add(dir2);
+            
+            crystalGroup = new THREE.Group(); scene.add(crystalGroup);
+            capsGroup = new THREE.Group(); scene.add(capsGroup);
+            annotationGroup = new THREE.Group(); scene.add(annotationGroup);
+
+            // Inward facing normals to keep volume P*n + d > 0
+            cubicPlanes = [
+                new THREE.Plane(new THREE.Vector3(1,0,0), 0), new THREE.Plane(new THREE.Vector3(-1,0,0), A),
+                new THREE.Plane(new THREE.Vector3(0,1,0), 0), new THREE.Plane(new THREE.Vector3(0,-1,0), A),
+                new THREE.Plane(new THREE.Vector3(0,0,1), 0), new THREE.Plane(new THREE.Vector3(0,0,-1), A)
+            ];
+            const cHeight = A * 1.633;
+            hcpPlanes = [ new THREE.Plane(new THREE.Vector3(0,1,0), 0), new THREE.Plane(new THREE.Vector3(0,-1,0), cHeight) ];
+            for (let i = 0; i < 6; i++) {
+                const ang = (i * 60 + 30) * Math.PI / 180;
+                hcpPlanes.push(new THREE.Plane(new THREE.Vector3(-Math.cos(ang), 0, -Math.sin(ang)), A * Math.sqrt(3)/2));
+            }
+
+            window.addEventListener('resize', onWindowResize, false);
+            updateStructureUI(); buildLattice(); resetView(); animate();
+        }
+
+        function onWindowResize() {
+            const container = document.getElementById('canvas-container');
+            camera.aspect = container.clientWidth / container.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            if (state.view === '2D') draw2DView();
+        }
+
+        function isWithinBox(p) {
+            const eps = 0.1;
+            const planes = state.structure === 'HCP' ? hcpPlanes : cubicPlanes;
+            for(let plane of planes) if(plane.distanceToPoint(p) < -eps) return false;
+            return true;
+        }
+
+        function addAtom(x, y, z, type='main') {
+            let color = type === 'ion2' ? 0xef4444 : 0x3b82f6;
+            let radiusMultiplier = type === 'ion2' ? 0.7 : 1.0;
+            let baseR = A/2;
+            if(state.structure === 'BCC') baseR = (Math.sqrt(3)/4)*A;
+            if(state.structure === 'FCC') baseR = (Math.sqrt(2)/4)*A;
+            if(state.structure === 'HCP') baseR = A/2;
+            
+            if(state.mode === 'ions') {
+                baseR = A/3;
+                radiusMultiplier = type === 'ion2' ? 0.6 : 0.85; // Better ionic proportions to prevent heavy overlap
+            }
+
+            const pos = new THREE.Vector3(x,y,z);
+            const isCore = isWithinBox(pos);
+            const r = baseR * state.radiusScale * radiusMultiplier;
+
+            const sphereGroup = new THREE.Group();
+            sphereGroup.position.copy(pos);
+            sphereGroup.userData = { isCore, type, originalColor: color, baseR, rScaleMultiplier: radiusMultiplier };
+
+            const geom = new THREE.SphereGeometry(r, 32, 32);
+            const materialFront = new THREE.MeshStandardMaterial({ 
+                color: color, roughness: 0.2, metalness: 0.1, side: THREE.FrontSide 
+            });
+            const meshFront = new THREE.Mesh(geom, materialFront);
+            sphereGroup.add(meshFront);
+            
+            crystalGroup.add(sphereGroup);
+            atomsMeshArray.push({ group: sphereGroup, pos: pos, baseR: baseR, rScaleMultiplier: radiusMultiplier });
+        }
+
+        function createWireframeBox(w, h, d, x, y, z) {
+            const line = new THREE.LineSegments(
+                new THREE.EdgesGeometry(new THREE.BoxGeometry(w, h, d)), 
+                new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.3, linewidth: 2 })
+            );
+            line.position.set(x, y, z);
+            return line;
+        }
+
+        function buildLattice() {
+            crystalGroup.clear(); capsGroup.clear();
+            atomsMeshArray = []; capsMeshArray = [];
+            const s = state.structure; const c = A * 1.633;
+
+            if(s !== 'HCP') unitCellBox = createWireframeBox(A, A, A, A/2, A/2, A/2);
+            else {
+                const pts = [];
+                for(let i=0; i<6; i++) {
+                    const ang = i * Math.PI / 3;
+                    pts.push([Math.cos(ang)*A, 0, Math.sin(ang)*A]);
+                }
+                const geom = new THREE.BufferGeometry(); const v = [];
+                for(let i=0; i<6; i++) {
+                    v.push(...pts[i], ...pts[(i+1)%6]); 
+                    v.push(pts[i][0], c, pts[i][2], pts[(i+1)%6][0], c, pts[(i+1)%6][2]); 
+                    v.push(...pts[i], pts[i][0], c, pts[i][2]); 
+                }
+                geom.setAttribute('position', new THREE.Float32BufferAttribute(v, 3));
+                unitCellBox = new THREE.LineSegments(geom, new THREE.LineBasicMaterial({ color: 0xffffff, transparent:true, opacity:0.3 }));
+            }
+            crystalGroup.add(unitCellBox);
+
+            // Structure generation
+            if (s === 'HCP') {
+                const a1 = new THREE.Vector3(A, 0, 0), a2 = new THREE.Vector3(A/2, 0, A*Math.sqrt(3)/2), a3 = new THREE.Vector3(0, c, 0);
+                // Correct HCP Basis: fixes middle row symmetry to sit perfectly in the hollows
+                const basis2 = new THREE.Vector3(A/2, c/2, A*Math.sqrt(3)/6); 
+                for(let u of [-2,-1,0,1,2]) for(let v of [-2,-1,0,1,2]) for(let w of [-1,0,1]) {
+                    let p = new THREE.Vector3().addScaledVector(a1, u).addScaledVector(a2, v).addScaledVector(a3, w);
+                    addAtom(p.x, p.y, p.z, 'main');
+                    let p2 = p.clone().add(basis2);
+                    addAtom(p2.x, p2.y, p2.z, 'main');
+                }
+            } else {
+                for(let i of [-1,0,1,2]) for(let j of [-1,0,1,2]) for(let k of [-1,0,1,2]) {
+                    const x = i*A, y = j*A, z = k*A;
+                    if (s === 'SC') addAtom(x,y,z, 'main');
+                    else if (s === 'BCC') { addAtom(x,y,z, 'main'); addAtom(x+A/2, y+A/2, z+A/2, 'main'); }
+                    else if (s === 'FCC') { addAtom(x,y,z, 'main'); addAtom(x+A/2, y+A/2, z, 'main'); addAtom(x+A/2, y, z+A/2, 'main'); addAtom(x, y+A/2, z+A/2, 'main'); }
+                    else if (s === 'NaCl') {
+                        addAtom(x,y,z, 'main'); addAtom(x+A/2, y+A/2, z, 'main'); addAtom(x+A/2, y, z+A/2, 'main'); addAtom(x, y+A/2, z+A/2, 'main');
+                        addAtom(x+A/2, y+A/2, z+A/2, 'ion2'); addAtom(x+A/2, y, z, 'ion2'); addAtom(x, y+A/2, z, 'ion2'); addAtom(x, y, z+A/2, 'ion2');
+                    } else if (s === 'CsCl') { addAtom(x,y,z, 'main'); addAtom(x+A/2, y+A/2, z+A/2, 'ion2'); }
+                    else if (s === 'CaF2') {
+                        addAtom(x,y,z, 'main'); addAtom(x+A/2, y+A/2, z, 'main'); addAtom(x+A/2, y, z+A/2, 'main'); addAtom(x, y+A/2, z+A/2, 'main');
+                        const q=A/4, tq=3*A/4, pts = [[q,q,q],[tq,q,q],[q,tq,q],[tq,tq,q],[q,q,tq],[tq,q,tq],[q,tq,tq],[tq,tq,tq]];
+                        pts.forEach(p => addAtom(x+p[0], y+p[1], z+p[2], 'ion2'));
+                    }
+                }
+            }
+
+            // Generate Solid Caps using Mathematical Intersections
+            if (state.unitcellCut) {
+                const planes = state.structure === 'HCP' ? hcpPlanes : cubicPlanes;
+                atomsMeshArray.forEach(atom => {
+                    const C = atom.pos;
+                    const R = atom.baseR * state.radiusScale * atom.rScaleMultiplier;
+                    
+                    planes.forEach(clipPlane => {
+                        const dist = clipPlane.distanceToPoint(C);
+                        if (Math.abs(dist) < R * 0.999) { 
+                            const rPrime = Math.sqrt(R*R - dist*dist);
+                            const cProj = C.clone().sub(clipPlane.normal.clone().multiplyScalar(dist));
+                            
+                            const capGeom = new THREE.CircleGeometry(rPrime, 32);
+                            const capMat = new THREE.MeshStandardMaterial({ side: THREE.FrontSide, roughness: 0.2, metalness: 0.1 });
+                            const capMesh = new THREE.Mesh(capGeom, capMat);
+                            
+                            capMesh.position.copy(cProj);
+                            capMesh.lookAt(cProj.clone().add(clipPlane.normal.clone().negate())); // Face OUTWARD
+                            capMat.clippingPlanes = planes.filter(p => p !== clipPlane); // Clipped by all OTHER planes
+                            
+                            capsGroup.add(capMesh);
+                            capsMeshArray.push({ mesh: capMesh, parentData: atom });
+                        }
+                    });
+                });
+            }
+
+            if(state.view === '2D') draw2DView();
+            updateVisibilityAndHighlighting();
+            updateOverlays(); updateAnnotations();
+        }
+
+        function updateVisibilityAndHighlighting() {
+            const prop = state.activeProperty;
+            const isCut = state.unitcellCut;
+            const activePlanes = isCut ? (state.structure === 'HCP' ? hcpPlanes : cubicPlanes) : [];
+            
+            let targetPos = new THREE.Vector3(0,0,0), neighborDist = A + 0.1; 
+            if(state.structure === 'SC') { targetPos.set(A, A, A); neighborDist = A + 0.05; }
+            else if(state.structure === 'BCC') { targetPos.set(A/2, A/2, A/2); neighborDist = (Math.sqrt(3)/2)*A + 0.05; }
+            else if(state.structure === 'FCC') { targetPos.set(A/2, A/2, A); neighborDist = (Math.sqrt(2)/2)*A + 0.05; }
+            else if(state.structure === 'NaCl') { targetPos.set(A/2, A/2, A/2); neighborDist = A/2 + 0.05; }
+            else if(state.structure === 'CsCl') { targetPos.set(A/2, A/2, A/2); neighborDist = (Math.sqrt(3)/2)*A + 0.05; }
+            else if(state.structure === 'CaF2') { targetPos.set(A/2, A/2, A); neighborDist = (Math.sqrt(3)/4)*A + 0.05; }
+
+            atomsMeshArray.forEach(atom => {
+                const group = atom.group;
+                const meshFront = group.children[0];
+                meshFront.material.clippingPlanes = activePlanes;
+                
+                const dist = group.position.distanceTo(targetPos);
+                const isCore = group.userData.isCore;
+                let targetColor = group.userData.originalColor;
+                let opacity = 1.0, transparent = false;
+                
+                // Determine if this atom sits on the boundary of the unit cell box
+                const eps = 0.05;
+                const isSurface = state.structure !== 'HCP' && (
+                    Math.abs(group.position.x) < eps || Math.abs(group.position.x - A) < eps ||
+                    Math.abs(group.position.y) < eps || Math.abs(group.position.y - A) < eps ||
+                    Math.abs(group.position.z) < eps || Math.abs(group.position.z - A) < eps
+                );
+                
+                if (prop === 'CN') {
+                    if (dist < 0.01) targetColor = 0x22c55e;
+                    else if (dist <= neighborDist && dist > 0.01) targetColor = 0xeab308;
+                    else { opacity = 0.15; transparent = true; }
+                } else if (prop === 'Stacking' && state.mode === 'atoms') {
+                    if (state.structure === 'SC') targetColor = 0xef4444;
+                    else if (state.structure === 'BCC') {
+                        const yN = Math.round((group.position.y / A) * 2);
+                        targetColor = (yN % 2 === 0) ? 0xef4444 : 0x3b82f6; 
+                    } else if (state.structure === 'FCC') {
+                        const sum = Math.round((group.position.x + group.position.y + group.position.z) / (A/2));
+                        const mod = sum % 3;
+                        targetColor = mod === 0 ? 0xef4444 : (mod === 1 ? 0x3b82f6 : 0x22c55e); 
+                    } else if (state.structure === 'HCP') {
+                        const yN = Math.round((group.position.y / (A * 1.633)) * 2);
+                        targetColor = (yN % 2 === 0) ? 0xef4444 : 0x3b82f6; 
+                    }
+                    if (!isCut && !isCore) { opacity = 0.15; transparent = true; }
+                } else {
+                    if (!isCut && !isCore) { 
+                        opacity = 0.15; transparent = true; 
+                    } else if (state.mode === 'ions' && isSurface && isCut) {
+                        // Make exterior boundary ions translucent so internal core ions are highly visible
+                        opacity = 0.55; transparent = true;
+                    }
+                }
+
+                meshFront.material.color.setHex(targetColor);
+                meshFront.material.opacity = opacity;
+                meshFront.material.transparent = transparent;
+                meshFront.visible = (!isCut || isCore); 
+                
+                group.userData.currentColor = targetColor;
+                group.userData.currentOpacity = opacity;
+                group.userData.currentVisible = meshFront.visible;
+            });
+
+            capsMeshArray.forEach(cap => {
+                const mat = cap.mesh.material;
+                const pData = cap.parentData.group.userData;
+                mat.color.setHex(pData.currentColor);
+                mat.opacity = pData.currentOpacity;
+                mat.transparent = pData.currentOpacity < 1.0;
+                cap.mesh.visible = pData.currentVisible;
+            });
+            
+            updateLegend();
+            if(state.view === '2D') draw2DView();
+        }
+
+        function updateLegend() {
+            const lg = document.getElementById('legend-overlay');
+            lg.innerHTML = '<div class="text-[10px] font-bold text-slate-300 uppercase tracking-wider mb-1 border-b border-slate-700 pb-1">Legend</div>';
+
+            if (state.activeProperty === 'Stacking' && state.mode === 'atoms') {
+                lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-red-500 shadow-sm border border-red-400"></div> <span class="font-medium text-slate-200">Layer A</span></div>`;
+                if (['BCC', 'FCC', 'HCP'].includes(state.structure)) lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-blue-500 shadow-sm border border-blue-400"></div> <span class="font-medium text-slate-200">Layer B</span></div>`;
+                if (state.structure === 'FCC') lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-green-500 shadow-sm border border-green-400"></div> <span class="font-medium text-slate-200">Layer C</span></div>`;
+            } else if (state.activeProperty === 'CN') {
+                lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-green-500 border border-green-400"></div> <span class="font-medium text-slate-200">Target Atom</span></div>`;
+                lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-yellow-500 border border-yellow-400"></div> <span class="font-medium text-slate-200">Nearest Neighbors</span></div>`;
+            } else {
+                const ml = state.mode === 'atoms' ? 'Metal Atom' : 'Cation / Primary';
+                lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-blue-500 border border-blue-400"></div> <span class="font-medium text-slate-200">${ml}</span></div>`;
+                if (state.mode === 'ions') lg.innerHTML += `<div class="flex items-center gap-2 text-xs"><div class="w-3 h-3 rounded-full bg-red-500 border border-red-400"></div> <span class="font-medium text-slate-200">Anion / Secondary</span></div>`;
+            }
+            lg.innerHTML += `<div class="flex items-center gap-2 text-[10px] text-slate-400 mt-1"><div class="w-3 h-3 border-2 border-white/40"></div> Unit Cell Boundary</div>`;
+            lg.classList.remove('hidden');
+        }
+
+        function draw2DView() {
+            const canvas = document.getElementById('canvas-2d');
+            const ctx = canvas.getContext('2d');
+            const rect = canvas.parentElement.getBoundingClientRect();
+            
+            // Handle high DPI displays to prevent blurring/distortion
+            const dpr = window.devicePixelRatio || 1;
+            canvas.width = rect.width * dpr; 
+            canvas.height = rect.height * dpr;
+            canvas.style.width = `${rect.width}px`;
+            canvas.style.height = `${rect.height}px`;
+            
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, rect.width, rect.height);
+            const cx = rect.width / 2, cy = rect.height / 2;
+            const scale2D = Math.min(rect.width, rect.height) * 0.40 / A;
+            
+            ctx.save(); ctx.translate(cx, cy);
+            
+            // Grid Boundary
+            ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+            if (state.structure === 'HCP') {
+                ctx.beginPath();
+                for(let i=0; i<6; i++) {
+                    const ang = i * Math.PI / 3;
+                    const vx = Math.cos(ang)*A*scale2D, vy = Math.sin(ang)*A*scale2D;
+                    i===0 ? ctx.moveTo(vx,vy) : ctx.lineTo(vx,vy);
+                }
+                ctx.closePath(); ctx.stroke();
+            } else {
+                ctx.strokeRect(-A/2 * scale2D, -A/2 * scale2D, A * scale2D, A * scale2D);
+            }
+            
+            // Sort by depth (Y) to layer properly
+            const atoms2D = atomsMeshArray.map(a => ({
+                x: a.pos.x, y: a.pos.y, z: a.pos.z,
+                r: a.baseR * state.radiusScale * a.rScaleMultiplier,
+                color: '#' + a.group.userData.currentColor.toString(16).padStart(6, '0'),
+                opacity: a.group.userData.currentOpacity,
+                visible: a.group.userData.currentVisible
+            })).filter(a => a.visible).sort((a, b) => a.y - b.y);
+            
+            atoms2D.forEach(atom => {
+                const vx = (state.structure === 'HCP' ? atom.x : atom.x - A/2) * scale2D;
+                const vy = (state.structure === 'HCP' ? atom.z : atom.z - A/2) * scale2D;
+                const vr = atom.r * scale2D;
+                
+                // Do not draw if translucent in 2D to keep it clean, unless it's the core highlight
+                if(atom.opacity < 0.2) return; 
+                
+                ctx.beginPath();
+                ctx.arc(vx, vy, vr, 0, Math.PI * 2);
+                ctx.fillStyle = atom.color;
+                ctx.globalAlpha = atom.opacity;
+                ctx.fill();
+                
+                ctx.strokeStyle = 'rgba(255,255,255,0.8)';
+                ctx.lineWidth = 1.5;
+                ctx.globalAlpha = atom.opacity > 0.9 ? 1.0 : 0.4;
+                ctx.stroke();
+            });
+            ctx.restore();
+        }
+
+        function toggleUnitCell(val) { 
+            state.unitcellCut = (val === 'cut');
+            document.getElementById('btn-lat-cut').className = val === 'cut' ? 'flex-1 px-1 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'flex-1 px-1 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            document.getElementById('btn-lat-full').className = val === 'full' ? 'flex-1 px-1 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'flex-1 px-1 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            buildLattice(); 
+        }
+        
+        function setProperty(prop, btnElement) {
+            state.activeProperty = prop;
+            document.querySelectorAll('.prop-btn').forEach(btn => btn.className = 'prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded text-slate-400 hover:bg-slate-700/50 hover:text-white transition-all');
+            btnElement.className = 'prop-btn flex-1 text-[10px] font-bold uppercase tracking-wider rounded struct-active transition-all shadow-md';
+            updateVisibilityAndHighlighting(); updateOverlays(); updateAnnotations();
+        }
+
+        function updateStructureUI() {
+            const container = document.getElementById('structure-selector');
+            container.innerHTML = '';
+            structures[state.mode].forEach(item => {
+                const btn = document.createElement('button');
+                const isActive = item.id === state.structure;
+                btn.className = `flex-1 text-[11px] font-bold tracking-tight rounded transition-all ${isActive ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-300 hover:text-white hover:bg-slate-700/50'}`;
+                btn.innerText = item.label;
+                btn.onclick = () => { state.structure = item.id; updateStructureUI(); buildLattice(); };
+                container.appendChild(btn);
+            });
+        }
+
+        function setMode(mode) {
+            state.mode = mode;
+            document.getElementById('btn-mode-atoms').className = mode === 'atoms' ? 'px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            document.getElementById('btn-mode-ions').className = mode === 'ions' ? 'px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            state.structure = structures[mode][0].id;
+            updateStructureUI(); buildLattice();
+        }
+
+        function setView(view) {
+            state.view = view;
+            document.getElementById('btn-view-3d').className = view === '3D' ? 'px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            document.getElementById('btn-view-2d').className = view === '2D' ? 'px-3 text-[10px] uppercase tracking-wider rounded struct-active transition-colors' : 'px-3 text-[10px] uppercase tracking-wider rounded text-slate-400 hover:text-white transition-colors';
+            
+            if (view === '2D') {
+                document.getElementById('canvas-container').style.opacity = '0';
+                document.getElementById('html-annotations').style.opacity = '0';
+                document.getElementById('canvas-2d-container').style.display = 'flex';
+                draw2DView();
+            } else {
+                document.getElementById('canvas-container').style.opacity = '1';
+                document.getElementById('html-annotations').style.opacity = '1';
+                document.getElementById('canvas-2d-container').style.display = 'none';
+                resetView();
+            }
+        }
+
+        function resetView() {
+            controls.target.copy(state.structure === 'HCP' ? new THREE.Vector3(0, A * 1.633 / 2, 0) : new THREE.Vector3(A/2, A/2, A/2));
+            camera.position.set(A*1.8, A*1.4, A*2.2);
+            controls.update();
+        }
+
+        function updateRadiusFromSlider() {
+            state.radiusScale = parseFloat(document.getElementById('radius-slider').value); 
+            document.getElementById('radius-input').value = state.radiusScale.toFixed(2);
+            buildLattice(); // Rebuilds caps mathematically precise
+        }
+        function updateRadiusFromInput() {
+            let val = parseFloat(document.getElementById('radius-input').value);
+            if (isNaN(val) || val < 0.1) val = 0.1; if (val > 1.0) val = 1.0;
+            state.radiusScale = val; document.getElementById('radius-slider').value = val;
+            buildLattice();
+        }
+
+        function addLabel(text, pos, isMath = false) {
+            const el = document.createElement('div');
+            el.className = `absolute transform -translate-x-1/2 -translate-y-1/2 px-2 py-1 rounded shadow-lg bg-slate-900/90 border border-slate-600 text-white z-10 backdrop-blur pointer-events-auto`;
+            if (isMath) katex.render(text, el, { throwOnError: false, displayMode: false });
+            else el.innerHTML = `<span class="text-xs font-bold">${text}</span>`;
+            document.getElementById('html-annotations').appendChild(el);
+            labels.push({ el, pos });
+        }
+
+        function drawDimensionLine(p1, p2, text, hex, isMath=false) {
+            const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([p1, p2]), new THREE.LineBasicMaterial({ color: hex, depthTest: false, linewidth: 2 }));
+            line.renderOrder = 999; annotationGroup.add(line);
+            addLabel(text, p1.clone().lerp(p2, 0.5), isMath);
+        }
+
+        function updateAnnotations() {
+            document.getElementById('html-annotations').innerHTML = '';
+            annotationGroup.clear(); labels = [];
+            if(state.view === '2D' || state.activeProperty === 'None') return;
+
+            if (state.activeProperty === 'APF') {
+                addLabel("V_{\\text{cell}} = a^3", new THREE.Vector3(A, A, A), true);
+                addLabel("V_{\\text{atom}} = \\frac{4}{3}\\pi r^3", new THREE.Vector3(A/2, A/2, A/2), true);
+            } else if (state.activeProperty === 'Density') {
+                addLabel("\\text{Mass } (M)", new THREE.Vector3(A/2, A/2, A/2), true);
+                addLabel("\\text{Vol } (V_c)", new THREE.Vector3(A, 0, A), true);
+            } else if (state.activeProperty === 'Radius') {
+                drawDimensionLine(new THREE.Vector3(0, -0.2, A), new THREE.Vector3(A, -0.2, A), "a", 0x3b82f6, true);
+                let rS, rE;
+                if (state.structure === 'SC') { rS = new THREE.Vector3(0, A, 0); rE = new THREE.Vector3(A/2, A, 0); } 
+                else if (state.structure === 'BCC') { rS = new THREE.Vector3(A/2, A/2, A/2); rE = new THREE.Vector3(3*A/4, 3*A/4, 3*A/4); } 
+                else if (state.structure === 'FCC') { rS = new THREE.Vector3(A/2, A/2, 0); rE = new THREE.Vector3(A/4, A/4, 0); } 
+                else if (state.structure === 'HCP') { rS = new THREE.Vector3(0, 0, 0); rE = new THREE.Vector3(A/2, 0, 0); }
+                if(rS && rE) drawDimensionLine(rS, rE, "r", 0xef4444, true);
+            }
+        }
+
+        function updateOverlays() {
+            const container = document.getElementById('data-overlays');
+            container.innerHTML = '';
+            if(state.activeProperty === 'None') return;
+            const data = propertyData[state.structure];
+            if(!data[state.activeProperty]) return;
+
+            const card = document.createElement('div');
+            card.className = "glass-panel p-3 rounded-lg w-72 md:w-80 border-l-4 border-l-blue-500 pointer-events-auto shrink-0 shadow-lg";
+            card.innerHTML = `<div class="math-container text-blue-100 overflow-x-auto w-full flex justify-center py-1"></div>`;
+            container.appendChild(card);
+            
+            katex.render(data[state.activeProperty], card.querySelector('.math-container'), { displayMode: true, throwOnError: false });
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (state.view === '3D') {
+                controls.update();
+                const container = document.getElementById('canvas-container');
+                if (container && labels.length > 0) {
+                    const w = container.clientWidth / 2, h = container.clientHeight / 2;
+                    labels.forEach(label => {
+                        const vec = label.pos.clone().project(camera);
+                        if (vec.z > 1) label.el.style.opacity = '0';
+                        else {
+                            label.el.style.opacity = '1';
+                            label.el.style.left = `${(vec.x * w) + w}px`; label.el.style.top = `${-(vec.y * h) + h}px`;
+                        }
+                    });
+                }
+                renderer.render(scene, camera);
+            }
+        }
+
+        document.addEventListener("DOMContentLoaded", initThree);
+    </script>
+</body>
+</html>
